@@ -1,0 +1,9 @@
+name: ai-image-lab
+contributions:
+  commands:
+    - id: ai-image-lab.enter_lab
+      title: AI Image Lab
+      python_name: ai_image_lab:Lab
+  widgets:
+    - command: ai-image-lab.enter_lab  # note, same as command.id above
+      display_name: AI Image Lab

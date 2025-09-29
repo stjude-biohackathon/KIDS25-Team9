@@ -1,7 +1,7 @@
-# DL-Image-Lab : Framework for developing Deep Learning models for image analysis tasks
+# AI-Image-Lab : Framework for developing Deep Learning models for image analysis tasks
 
 
-**DL-Image-Lab** is a napari plugin designed to make deep learning models for image analysis.
+**AI-Image-Lab** is a napari plugin designed to make deep learning models for image analysis.
 
 The project’s goal is to provide a user-friendly interface that seamlessly integrates with Napari, allowing :  
 
