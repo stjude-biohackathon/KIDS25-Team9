@@ -6,7 +6,7 @@
 The project’s goal is to provide a user-friendly interface that seamlessly integrates with Napari, allowing :  
 
 - **Annotation** incorporating model assisted annotation on top napari's annotation framework
-- **Training** deep learning models on imaging datasets through the GUI
+- **Training** deep learning models on imaging datasets through the GUI 
 - **Running inference** using pre-trained or custom-trained models
 - **Fine-tuning / adapting** existing models to new imaging conditions or domains
 
