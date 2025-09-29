@@ -1,4 +1,0 @@
-ai_image_lab
-models
-ui
-utilities
