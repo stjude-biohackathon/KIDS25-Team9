@@ -1,4 +1,6 @@
+import numpy as np
 import os
+import uuid
 from glob import glob
 
 import albumentations as A
@@ -8,11 +10,14 @@ import random
 
 
 class ImageAugmentor:
-    def __init__(self, input_dir, output_dir, transform_types=None, iterations=100, params=None):
+    def __init__(self, input_img_dir, input_lbl_dir, output_img_dir, output_lbl_dir, transform_types=None,
+                 iterations=100, params=None):
         """
         Args:
-            input_dir (str): Path to input folder
-            output_dir (str): Path to output base folder
+            input_img_dir (str): Path to input images folder
+            input_lbl_dir (str): Path to input labels or labels_instance folder
+            output_img_dir (str): Path to output images folder
+            output_lbl_dir (str): Path to output labels or labels_instance folder
             transform_types (list of str): List containing one or more of ["rotation", "scaling", "translation", "elastic", "horizontal_flip", "vertical_flip", "erasing", "normalize", "all"]
             iterations (int): Number of augmented versions per input image
             params (dict): Parameters for augmentation ranges. Examples:
@@ -25,12 +30,26 @@ class ImageAugmentor:
                     "normalize": {"mean": (0.0, 0.0, 0.0), "std": (1.0, 1.0, 1.0), "max_pixel_value": 255.0, "p": 1.0}
                 }
         """
-        self.image_dir = os.path.join(input_dir, "Images")
-        self.label_dir = os.path.join(input_dir, "Images")
-        self.output_image_dir = os.path.join(output_dir, "Images")
-        self.output_label_dir = os.path.join(output_dir, "Labels")
+        self.image_dir = input_img_dir
+        self.output_image_dir = output_img_dir
+        self.output_label_dir = output_lbl_dir
         os.makedirs(self.output_image_dir, exist_ok=True)
         os.makedirs(self.output_label_dir, exist_ok=True)
+
+        # Determine label mode based on input_lbl_dir contents
+        # If input_lbl_dir contains only .tif files -> "labels"
+        # If input_lbl_dir contains subfolders (and those subfolders contain .tif files) -> "labels_instance"
+        tif_files = [f for f in os.listdir(input_lbl_dir) if f.lower().endswith('.tif')]
+        subdirs = [f for f in os.listdir(input_lbl_dir) if os.path.isdir(os.path.join(input_lbl_dir, f))]
+        if tif_files and not subdirs:
+            self.label_dir = input_lbl_dir
+            self.label_mode = "labels"
+        elif subdirs:
+            self.label_instance_dir = input_lbl_dir
+            self.label_mode = "labels_instance"
+        else:
+            raise ValueError(
+                "No valid label directory found in input_lbl_dir. Expected .tif files or subfolders containing .tif files.")
 
         if transform_types is None:
             transform_types = ["all"]
@@ -121,34 +140,47 @@ class ImageAugmentor:
 
     def augment_dataset(self):
         """Apply augmentation to all images/labels with multiple iterations"""
-        image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
-        label_files = sorted(glob(os.path.join(self.label_dir, "*.tif")))
+        if self.label_mode == "labels":
+            image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
+            label_files = sorted(glob(os.path.join(self.label_dir, "*.tif")))
 
-        for img_path, lbl_path in zip(image_files, label_files):
-            for i in range(self.iterations):
-                self._augment_pair(img_path, lbl_path, i + 1)
+            for img_path, lbl_path in zip(image_files, label_files):
+                for i in range(self.iterations):
+                    self._augment_pair(img_path, lbl_path, i + 1)
 
-        print(f"✅ Augmentation complete! Results saved to {os.path.dirname(self.output_image_dir)}")
+            print(f"✅ Augmentation complete! Results saved to {os.path.dirname(self.output_image_dir)}")
 
-    def _augment_pair(self, img_path, lbl_path, iteration):
-        """Apply one augmentation to a single image–label pair"""
-        image_stack = tifffile.imread(img_path)
-        label_stack = tifffile.imread(lbl_path)
+        elif self.label_mode == "labels_instance":
+            # Get all subfolders in Labels_instance
+            subfolders = [f.path for f in os.scandir(self.label_instance_dir) if f.is_dir()]
+            subfolder_names = [os.path.basename(f) for f in subfolders]
 
-        # Detect if images are 2D (single image)
-        is_2d = image_stack.ndim == 2
+            # For each image in Images directory
+            image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
+            for img_path in image_files:
+                basename = os.path.splitext(os.path.basename(img_path))[0]
 
-        if is_2d:
-            # Convert 2D grayscale image to (H, W, 1) for albumentations
-            image_slices = [image_stack[..., None]]
-            label_slices = [label_stack[..., None] if label_stack.ndim == 2 else label_stack]
-        else:
-            image_slices = image_stack
-            label_slices = label_stack
+                # Collect all matching label paths from subfolders
+                label_paths = []
+                for subfolder, subfolder_name in zip(subfolders, subfolder_names):
+                    label_path = os.path.join(subfolder, f"{basename}.tif")
+                    if os.path.exists(label_path):
+                        label_paths.append((label_path, subfolder_name))
 
+                if not label_paths:
+                    continue  # No labels found for this image, skip
+
+                for i in range(self.iterations):
+                    # Generate transform parameters once per iteration and build transform
+                    transform, params = self._generate_transform_params()
+                    # Apply augmentation to image and all labels with the same transform
+                    self._augment_pair(img_path, label_paths, i + 1, transform, params)
+
+            print(f"✅ Augmentation complete! Results saved to {os.path.dirname(self.output_image_dir)}")
+
+    def _generate_transform_params(self):
         types = set(self.transform_types)
 
-        # Sample fixed values once for this iteration
         if "rotation" in types or "all" in types:
             rot_range = self.params.get("rotation", {}).get("degrees", (-30, 30))
             rotate = random.uniform(rot_range[0], rot_range[1])
@@ -164,7 +196,7 @@ class ImageAugmentor:
         if "translation" in types or "all" in types:
             trans_range = self.params.get("translation", {}).get("shift", (-0.05, 0.05))
             translate_percent = (
-            random.uniform(trans_range[0], trans_range[1]), random.uniform(trans_range[0], trans_range[1]))
+                random.uniform(trans_range[0], trans_range[1]), random.uniform(trans_range[0], trans_range[1]))
         else:
             translate_percent = (0, 0)
 
@@ -184,7 +216,6 @@ class ImageAugmentor:
             erasing_scale = None
             erasing_ratio = None
 
-        # Build a single transform for this entire stack (per iteration) with fixed parameters
         transform = self._build_transform(
             rotate=rotate,
             scale=scale,
@@ -194,55 +225,268 @@ class ImageAugmentor:
             erasing_scale=erasing_scale,
             erasing_ratio=erasing_ratio
         )
+        params = {
+            "rotate": rotate,
+            "scale": scale,
+            "translate_percent": translate_percent,
+            "elastic_alpha": elastic_alpha,
+            "elastic_sigma": elastic_sigma,
+            "erasing_scale": erasing_scale,
+            "erasing_ratio": erasing_ratio,
+        }
+        return transform, params
 
-        aug_image_slices = []
-        aug_label_slices = []
+    def _augment_pair(self, img_path, label_paths, iteration, transform=None, params=None):
+        """
+        Wrapper method to augment an image and one or multiple labels with the same transform.
+        label_paths: either a single label path string or a list of tuples (label_path, subfolder_name)
+        """
+        if transform is None or params is None:
+            # If called without transform, generate one and apply to single pair
+            types = set(self.transform_types)
 
-        # Apply the same transform to all slices in the stack
-        for img_slice, lbl_slice in zip(image_slices, label_slices):
-            augmented = transform(image=img_slice, mask=lbl_slice)
-            aug_img = augmented["image"]
-            aug_lbl = augmented["mask"]
+            if "rotation" in types or "all" in types:
+                rot_range = self.params.get("rotation", {}).get("degrees", (-30, 30))
+                rotate = random.uniform(rot_range[0], rot_range[1])
+            else:
+                rotate = 0
 
-            # Remove channel dimension if 2D input
-            if is_2d:
-                aug_img = aug_img[..., 0]
-                if aug_lbl.ndim == 3 and aug_lbl.shape[-1] == 1:
-                    aug_lbl = aug_lbl[..., 0]
+            if "scaling" in types or "all" in types:
+                scale_range = self.params.get("scaling", {}).get("scale", (0.9, 1.1))
+                scale = random.uniform(scale_range[0], scale_range[1])
+            else:
+                scale = 1.0
 
-            aug_image_slices.append(aug_img)
-            aug_label_slices.append(aug_lbl)
+            if "translation" in types or "all" in types:
+                trans_range = self.params.get("translation", {}).get("shift", (-0.05, 0.05))
+                translate_percent = random.uniform(trans_range[0], trans_range[1])
+            else:
+                translate_percent = 0
 
-        basename = os.path.splitext(os.path.basename(img_path))[0]
-        out_img_path = os.path.join(self.output_image_dir, f"{basename}_{iteration}.tif")
-        out_lbl_path = os.path.join(self.output_label_dir, f"{basename}_{iteration}.tif")
+            if "elastic" in types or "all" in types:
+                elastic_params = self.params.get("elastic", {})
+                elastic_alpha = elastic_params.get("alpha", 1.0)
+                elastic_sigma = elastic_params.get("sigma", 50.0)
+            else:
+                elastic_alpha = None
+                elastic_sigma = None
 
+            if "erasing" in types or "all" in types:
+                erasing_params = self.params.get("erasing", {})
+                erasing_scale = erasing_params.get("scale", (0.02, 0.33))
+                erasing_ratio = erasing_params.get("ratio", (0.3, 3.3))
+            else:
+                erasing_scale = None
+                erasing_ratio = None
+
+            transform = self._build_transform(
+                rotate=rotate,
+                scale=scale,
+                translate_percent=translate_percent,
+                elastic_alpha=elastic_alpha,
+                elastic_sigma=elastic_sigma,
+                erasing_scale=erasing_scale,
+                erasing_ratio=erasing_ratio
+            )
+            params = {
+                "rotate": rotate,
+                "scale": scale,
+                "translate_percent": translate_percent,
+                "elastic_alpha": elastic_alpha,
+                "elastic_sigma": elastic_sigma,
+                "erasing_scale": erasing_scale,
+                "erasing_ratio": erasing_ratio,
+            }
+
+        # If label_paths is a single string, convert to list of one tuple for uniform processing
+        if isinstance(label_paths, str):
+            label_paths = [(label_paths, None)]
+
+        # Generate a unique_id once per iteration
+        unique_id = uuid.uuid4().hex[:8]
+
+        # Augment image once
+        self._augment_with_transform(img_path, iteration, transform, params, is_image=True, unique_id=unique_id)
+
+        # Augment each label with same transform
+        for lbl_path, subfolder_name in label_paths:
+            # Determine output label directory
+            if subfolder_name is not None:
+                label_out_dir = os.path.join(self.output_label_dir, subfolder_name)
+                os.makedirs(label_out_dir, exist_ok=True)
+            else:
+                label_out_dir = self.output_label_dir
+            self._augment_with_transform(lbl_path, iteration, transform, params, is_image=False,
+                                         label_out_dir=label_out_dir, unique_id=unique_id)
+
+    def _augment_with_transform(self, path, iteration, transform, params, is_image=True, label_out_dir=None,
+                                unique_id=None, return_array=False):
+        """Apply the provided transform to a single image or label file.
+        For 3D images, applies the transform slice by slice, handling channels appropriately.
+        If return_array is True, return the augmented array instead of writing to file.
+        """
+        if label_out_dir is None:
+            label_out_dir = self.output_label_dir
+
+        stack = tifffile.imread(path)
+
+        # Detect if images are 2D (single image)
+        is_2d = stack.ndim == 2
+
+        aug_slices = []
         if is_2d:
-            tifffile.imwrite(out_img_path, aug_image_slices[0])
-            tifffile.imwrite(out_lbl_path, aug_label_slices[0])
+            # Convert 2D grayscale image to (H, W, 1) for albumentations
+            slice_ = stack
+            # Ensure dtype is float32 or uint8 for albumentations
+            if slice_.dtype not in [np.float32, np.uint8]:
+                if is_image:
+                    slice_ = slice_.astype(np.float32)
+                else:
+                    slice_ = slice_.astype(np.uint8)
+            slice_exp = slice_[..., None]
+            if is_image:
+                augmented = transform(image=slice_exp)
+                aug = augmented["image"]
+            else:
+                augmented = transform(image=slice_exp, mask=slice_exp)
+                aug = augmented["mask"]
+            # Remove channel dimension for 2D input
+            aug = aug[..., 0]
+            aug_slices.append(aug)
         else:
-            tifffile.imwrite(out_img_path, aug_image_slices)
-            tifffile.imwrite(out_lbl_path, aug_label_slices)
+            # For 3D images, process each slice (axis 0) individually
+            for i in range(stack.shape[0]):
+                slice_ = stack[i]
+                # Ensure slice is 2D
+                if slice_.ndim != 2:
+                    raise ValueError(f"Expected 2D slice at index {i}, got shape {slice_.shape}")
+                # Ensure dtype is float32 or uint8 for albumentations
+                if slice_.dtype not in [np.float32, np.uint8]:
+                    if is_image:
+                        slice_ = slice_.astype(np.float32)
+                    else:
+                        slice_ = slice_.astype(np.uint8)
+                # Add channel dimension
+                slice_exp = slice_[..., None]
+                if is_image:
+                    augmented = transform(image=slice_exp)
+                    aug = augmented["image"]
+                else:
+                    augmented = transform(image=slice_exp, mask=slice_exp)
+                    aug = augmented["mask"]
+                # Remove extra channel dimension
+                aug = aug[..., 0]
+                aug_slices.append(aug)
+        # Stack slices back for 3D images
+        if is_2d:
+            result = aug_slices[0]
+        else:
+            result = np.stack(aug_slices, axis=0)
+
+        if return_array:
+            return result
+        else:
+            basename = os.path.splitext(os.path.basename(path))[0]
+            if is_image:
+                out_path = os.path.join(self.output_image_dir, f"{basename}_{iteration}_{unique_id}.tif")
+            else:
+                out_path = os.path.join(label_out_dir, f"{basename}_{iteration}_{unique_id}.tif")
+            tifffile.imwrite(out_path, result)
+
+    def transform_sample(self, n: int=0) -> list:
+        """
+        Apply a random transform (same as for augment) to the nth image and corresponding label(s), returning arrays.
+        For 'labels', picks nth image and nth label.
+        For 'labels_instance', picks nth image and all corresponding labels in subfolders.
+        Returns: [image_array, [label_array1, label_array2, ...]]
+        """
+        if self.label_mode == "labels":
+            image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
+            label_files = sorted(glob(os.path.join(self.label_dir, "*.tif")))
+            if n < 0 or n >= len(image_files) or n >= len(label_files):
+                raise IndexError(f"Index n={n} is out of range for available images/labels.")
+            img_path = image_files[n]
+            lbl_path = label_files[n]
+            transform, params = self._generate_transform_params()
+            img_array = self._augment_with_transform(img_path, 1, transform, params, is_image=True, return_array=True)
+            lbl_array = self._augment_with_transform(lbl_path, 1, transform, params, is_image=False, return_array=True)
+            return [img_array, [lbl_array]]
+        elif self.label_mode == "labels_instance":
+            # Get all subfolders in Labels_instance
+            subfolders = [f.path for f in os.scandir(self.label_instance_dir) if f.is_dir()]
+            subfolder_names = [os.path.basename(f) for f in subfolders]
+            image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
+            if n < 0 or n >= len(image_files):
+                raise IndexError(f"Index n={n} is out of range for available images.")
+            img_path = image_files[n]
+            basename = os.path.splitext(os.path.basename(img_path))[0]
+            # Collect all matching label paths from subfolders
+            label_paths = []
+            for subfolder in subfolders:
+                label_path = os.path.join(subfolder, f"{basename}.tif")
+                if os.path.exists(label_path):
+                    label_paths.append(label_path)
+            if not label_paths:
+                raise FileNotFoundError(f"No labels found for image {img_path} in any subfolder.")
+            transform, params = self._generate_transform_params()
+            img_array = self._augment_with_transform(img_path, 1, transform, params, is_image=True, return_array=True)
+            lbl_arrays = []
+            for lbl_path in label_paths:
+                lbl_array = self._augment_with_transform(lbl_path, 1, transform, params, is_image=False,
+                                                         return_array=True)
+                lbl_arrays.append(lbl_array)
+            return [img_array, lbl_arrays]
+        else:
+            raise ValueError("Unknown label mode.")
+
+
+def view_in_napari(img_array, lbl_arrays):
+    import napari
+    # Open napari viewer
+    viewer = napari.Viewer()
+    # Add the image
+    viewer.add_image(img_array, name='Image')
+    # Add labels
+    for i, lbl in enumerate(lbl_arrays):
+        viewer.add_labels(lbl, name=f'Label_{i}')
+    napari.run()
 
 
 # -------------------------
 # Example usage
 # -------------------------
 if __name__ == "__main__":
-    input_dir = "dataset/3d"
-    output_dir = "augmented/3d"
+    test_cases = [
+        ("multisegment", "Labels_instance"),
+        # ("3d", "Labels"),
+        # ("2d", "Labels")
+    ]
+    for data_type, label in test_cases:
+        augmentor = ImageAugmentor(
+            f'dataset/{data_type}/Images',
+            f'dataset/{data_type}/{label}',
+            f'augmented/{data_type}/Images',
+            f'augmented/{data_type}/{label}',
+            transform_types=[
+                # "rotation",
+                # "translation",
+                #  "elastic",
+                #  "erasing",
+                # "scaling",
+                # "normalize",
+                # "horizontal_flip",
+                "vertical_flip"
+            ],
+            iterations=2,
+            params={
+                "rotation": {"degrees": (-60, 60)},
+                "translation": {"shift": (-0.1, 0.1)},
+                "elastic": {"alpha": 1.0, "sigma": 50.0},
+                "erasing": {"scale": (0.02, 0.33), "ratio": (0.3, 3.3), "p": 1.0},
+                "normalize": {"mean": (0.0, 0.0, 0.0), "std": (1.0, 1.0, 1.0), "max_pixel_value": 255.0, "p": 1.0}
+            }
+        )
+        # augmentor.augment_dataset()
 
-    # Example: apply a combination of rotation, translation, flips, elastic deformation, erasing, and normalization.
-    augmentor = ImageAugmentor(
-        input_dir, output_dir,
-        transform_types=["rotation"],
-        iterations=2,
-        params={
-            "rotation": {"degrees": (-60, 60)},
-            "translation": {"shift": (-0.1, 0.1)},
-            "elastic": {"alpha": 1.0, "sigma": 50.0},
-            "erasing": {"scale": (0.02, 0.33), "ratio": (0.3, 3.3), "p": 1.0},
-            "normalize": {"mean": (0.0, 0.0, 0.0), "std": (1.0, 1.0, 1.0), "max_pixel_value": 255.0, "p": 1.0}
-        }
-    )
-    augmentor.augment_dataset()
+        img_array, lbl_arrays = augmentor.transform_sample()
+        view_in_napari(img_array, lbl_arrays)
