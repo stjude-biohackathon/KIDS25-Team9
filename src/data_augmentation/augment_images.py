@@ -102,7 +102,28 @@ class ImageAugmentor:
         normalize_params = self.params.get("normalize", {})
         mean = normalize_params.get("mean", (0.0, 0.0, 0.0))
         std = normalize_params.get("std", (1.0, 1.0, 1.0))
-        max_pixel_value = normalize_params.get("max_pixel_value", 255.0)
+        max_pixel_value = normalize_params.get("max_pixel_value", None)
+
+        if max_pixel_value is None:
+            # Automatically determine max_pixel_value from first image in self.image_dir
+            image_files = sorted(glob(os.path.join(self.image_dir, "*.tif")))
+            if not image_files:
+                max_pixel_value = 255.0
+            else:
+                first_img = tifffile.imread(image_files[0])
+                dtype = first_img.dtype
+                if np.issubdtype(dtype, np.uint8):
+                    max_pixel_value = 2 ** 8 - 1
+                elif np.issubdtype(dtype, np.uint16):
+                    max_pixel_value = 2 ** 16 - 1
+                elif np.issubdtype(dtype, np.uint32):
+                    max_pixel_value = 2 ** 32 - 1
+                elif np.issubdtype(dtype, np.float32):
+                    max_pixel_value = 1.0
+                else:
+                    max_pixel_value = 255.0
+
+        # Ensure Normalize only affects the image; masks will be ignored by Albumentations
         return A.Normalize(mean=mean, std=std, max_pixel_value=max_pixel_value, p=1.0)
 
     def _build_transform(self, rotate=0, scale=1.0, translate_percent=(0, 0), elastic_alpha=None, elastic_sigma=None,
