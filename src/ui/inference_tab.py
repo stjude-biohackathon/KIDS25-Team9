@@ -63,7 +63,7 @@ class InferenceTab(QWidget):
         root.addWidget(scroll, 1)
 
         self.setMinimumWidth(380)
-        self.setMaximumWidth(560)
+        #self.setMaximumWidth(560)
 
         # Events
         btn_browse_in.clicked.connect(lambda: self._choose_path(self.input_path, file_ok=True))

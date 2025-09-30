@@ -7,7 +7,7 @@ from qtpy.QtWidgets import (
 
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card, DropLineEdit, SelectableCard, labeled_row
-
+from ui.state import state
 
 class ProjectSetupTab(QWidget):
     """
@@ -36,7 +36,7 @@ class ProjectSetupTab(QWidget):
         hero_lay.setContentsMargins(16, 16, 16, 16)
         hero_lay.setSpacing(4)
 
-        title = QLabel("Model Builder"); title.setObjectName("H1")
+        title = QLabel("AI-Image-Lab"); title.setObjectName("H1")
         subtitle = QLabel("Select data and choose a task to continue.")
         subtitle.setObjectName("SubH1"); subtitle.setWordWrap(True)
         hero_lay.addWidget(title); hero_lay.addWidget(subtitle)
@@ -124,7 +124,7 @@ class ProjectSetupTab(QWidget):
 
         # width constraints
         self.setMinimumWidth(400)
-        self.setMaximumWidth(560)
+        #self.setMaximumWidth(560)
 
         # Events
         self._btn_img.clicked.connect(lambda: self._choose_dir(self.image_path))
@@ -177,6 +177,10 @@ class ProjectSetupTab(QWidget):
         self._validate_ready()
 
     def _on_continue(self):
+        state.task = self._selected_task()
+        state.input_img_dir = self.image_path.text().strip()
+        state.input_lbl_dir = self.label_path.text().strip()
+
         payload = {
             "images": self.image_path.text().strip(),
             "labels": self.label_path.text().strip(),

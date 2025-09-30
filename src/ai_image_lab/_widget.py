@@ -97,7 +97,7 @@ class Lab(QWidget):
 
         # width guard (~50% of viewer)
         self.setMinimumWidth(400)
-        self.setMaximumWidth(560)
+        #self.setMaximumWidth(560)
 
         # Wiring
         self.project_page.continued.connect(self._on_project_continue)

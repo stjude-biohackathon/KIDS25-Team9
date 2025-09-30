@@ -58,7 +58,7 @@ class TrainTab(QWidget):
         root.addWidget(scroll, 1)
 
         self.setMinimumWidth(380)
-        self.setMaximumWidth(560)
+        #self.setMaximumWidth(560)
 
         self.btn_start.clicked.connect(self._emit_start)
 
