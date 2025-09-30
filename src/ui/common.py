@@ -5,9 +5,8 @@ from qtpy.QtWidgets import (
     QFrame, QRadioButton, QSizePolicy
 )
 
-class DropLineEdit(QLineEdit):
-    """A QLineEdit that accepts folder drops and shows a placeholder like a web dropzone."""
 
+class DropLineEdit(QLineEdit):
     pathChanged = QtCore.Signal(str)
 
     def __init__(self, placeholder="Drop a folder here or click Browse…", parent=None):
@@ -39,8 +38,6 @@ class DropLineEdit(QLineEdit):
 
 
 class Card(QFrame):
-    """A rounded, shadowed card container for a modern web-like feel."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Card")
@@ -53,8 +50,6 @@ class Card(QFrame):
 
 
 class SelectableCard(QFrame):
-    """Clickable card tied to a hidden QRadioButton for model selection."""
-
     clicked = QtCore.Signal()
 
     def __init__(self, title: str, subtitle: str = "", parent=None):

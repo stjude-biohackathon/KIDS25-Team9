@@ -1,9 +1,10 @@
 from qtpy import QtCore
 from qtpy.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QScrollArea, QFrame, QHBoxLayout, QCheckBox, QSpinBox, QComboBox
+    QWidget, QVBoxLayout, QLabel, QPushButton, QScrollArea, QFrame, QHBoxLayout, QCheckBox, QSpinBox
 )
 from ui.common import Card
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
+
 
 class TrainTab(QWidget):
     start_training = QtCore.Signal(dict)  # emits {mode: "train"|"finetune", epochs:int, batch:int}
@@ -18,12 +19,16 @@ class TrainTab(QWidget):
         root.setContentsMargins(*DEFAULT_CONTENT_MARGINS)
         root.setSpacing(DEFAULT_SPACING)
 
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setSizePolicy(scroll.sizePolicy().Expanding, scroll.sizePolicy().Expanding)
+
         body = QWidget(); body_lay = QVBoxLayout(body)
         body_lay.setContentsMargins(2,2,2,2); body_lay.setSpacing(DEFAULT_SPACING)
 
         card = Card(); lay = card.layout()
-        title = QLabel("Train or Fine-tune")
+        title = QLabel("Training")
         title.setObjectName("H2"); lay.addWidget(title)
 
         self.cb_train = QCheckBox("Train from scratch")
@@ -33,7 +38,6 @@ class TrainTab(QWidget):
         lay.addWidget(self.cb_train)
         lay.addWidget(self.cb_finetune)
 
-        # Simple hyperparams
         hp_row = QHBoxLayout()
         self.epochs = QSpinBox(); self.epochs.setRange(1, 1000); self.epochs.setValue(50)
         self.batch = QSpinBox(); self.batch.setRange(1, 64); self.batch.setValue(4)
@@ -42,16 +46,14 @@ class TrainTab(QWidget):
         lay.addLayout(hp_row)
 
         actions = QHBoxLayout(); actions.addStretch(1)
-        self.btn_back = QPushButton("Back")
         self.btn_start = QPushButton("Start Training")
         self.btn_start.setObjectName("CTA")
-        actions.addWidget(self.btn_back)
         actions.addWidget(self.btn_start)
 
         body_lay.addWidget(card)
         body_lay.addLayout(actions)
         scroll.setWidget(body)
-        root.addWidget(scroll)
+        root.addWidget(scroll, 1)
 
         self.setMinimumWidth(380)
         self.setMaximumWidth(560)
@@ -59,7 +61,6 @@ class TrainTab(QWidget):
         self.btn_start.clicked.connect(self._emit_start)
 
     def _sync_mode(self, source):
-        # make checkboxes mutually exclusive
         if source is self.cb_train and self.cb_train.isChecked():
             self.cb_finetune.setChecked(False)
         elif source is self.cb_finetune and self.cb_finetune.isChecked():
