@@ -13,7 +13,7 @@ class ProjectSetupTab(QWidget):
     """
     Main/project page (no tabs here):
       - Dataset pickers
-      - Task cards in a horizontally scrollable area (for many future tasks)
+      - Task cards in a vertically scrollable area
       - Emits `continued` with {images, labels, task}
     """
     continued = QtCore.Signal(dict)  # emits {images, labels, task}
@@ -22,6 +22,7 @@ class ProjectSetupTab(QWidget):
         super().__init__(parent)
         self.setObjectName("Root")
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self._build_ui()
 
     def _build_ui(self):
@@ -30,108 +31,98 @@ class ProjectSetupTab(QWidget):
         root.setSpacing(10)
 
         # Hero
-        hero = QFrame()
-        hero.setObjectName("Hero")
+        hero = QFrame(); hero.setObjectName("Hero")
         hero_lay = QVBoxLayout(hero)
         hero_lay.setContentsMargins(16, 16, 16, 16)
         hero_lay.setSpacing(4)
 
-        title = QLabel("AI Image Lab")
-        title.setObjectName("H1")
+        title = QLabel("Model Builder"); title.setObjectName("H1")
         subtitle = QLabel("Select data and choose a task to continue.")
-        subtitle.setObjectName("SubH1")
-        subtitle.setWordWrap(True)
-        hero_lay.addWidget(title)
-        hero_lay.addWidget(subtitle)
+        subtitle.setObjectName("SubH1"); subtitle.setWordWrap(True)
+        hero_lay.addWidget(title); hero_lay.addWidget(subtitle)
 
         # Data sources
         data_card = Card()
         data_lay = data_card.layout()
         data_lay.setContentsMargins(14, 14, 14, 14)
 
-        data_title = QLabel("Datasets")
-        data_title.setObjectName("H2")
+        data_title = QLabel("Datasets"); data_title.setObjectName("H2")
         data_lay.addWidget(data_title)
 
         self.image_path = DropLineEdit("Drop your *image* folder or click Browse…")
-        btn_img = QPushButton("Browse"); btn_img.setObjectName("SecondaryBtn")
+        btn_img = QPushButton("Browse"); btn_img.setObjectName("PrimaryBtn")
         data_lay.addLayout(labeled_row("Image folder", self.image_path, btn_img))
 
         self.label_path = DropLineEdit("Drop your *label* folder or click Browse…")
-        btn_lab = QPushButton("Browse"); btn_lab.setObjectName("SecondaryBtn")
+        btn_lab = QPushButton("Browse"); btn_lab.setObjectName("PrimaryBtn")
         data_lay.addLayout(labeled_row("Label folder", self.label_path, btn_lab))
 
-        # --- Task selection (VERTICAL SCROLL AREA) ---
+        # Task selection (VERTICAL SCROLL AREA)
         task_card = Card()
         task_lay = task_card.layout()
         task_lay.setContentsMargins(14, 14, 14, 14)
 
-        task_title = QLabel("Task")
-        task_title.setObjectName("H2")
+        task_title = QLabel("Task"); task_title.setObjectName("H2")
         task_lay.addWidget(task_title)
 
         self.task_group = QButtonGroup(self)
         self.task_group.setExclusive(True)
 
-        # Scroll area for tasks (VERTICAL)
         self.tasks_scroll = QScrollArea()
         self.tasks_scroll.setWidgetResizable(True)
         self.tasks_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.tasks_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         self.tasks_scroll.setFrameShape(QFrame.NoFrame)
+        self.tasks_scroll.setSizePolicy(self.tasks_scroll.sizePolicy().Expanding, self.tasks_scroll.sizePolicy().Expanding)
 
         tasks_container = QWidget()
+        tasks_container.setSizePolicy(tasks_container.sizePolicy().Expanding, tasks_container.sizePolicy().Expanding)
         tasks_col = QVBoxLayout(tasks_container)
         tasks_col.setContentsMargins(0, 0, 0, 0)
         tasks_col.setSpacing(10)
 
-        # Define tasks (extendable)
+        # Define tasks
         self.card_sem2d = SelectableCard("Semantic Segmentation (2D)", "Pixel-wise classification on 2D images.")
         self.card_sem3d = SelectableCard("Semantic Segmentation (3D)", "Voxel-wise classification on volumes.")
-        self.card_inst = SelectableCard("Instance Segmentation", "Detect and segment individual objects.")
-        self.card_fine = SelectableCard("Fine-tune", "Start from a pre-trained model and adapt to your data.")
+        self.card_inst  = SelectableCard("Instance Segmentation", "Detect and separate individual objects.")
+        self.card_fine  = SelectableCard("Fine-tune", "Start from a pre-trained model and adapt to your data.")
         self.card_infer = SelectableCard("Inference", "Run a trained model on images or a folder.")
 
         self._task_cards = [
             (self.card_sem2d, "semantic-2d"),
             (self.card_sem3d, "semantic-3d"),
-            (self.card_inst, "instance"),
-            (self.card_fine, "fine-tune"),
+            (self.card_inst,  "instance"),
+            (self.card_fine,  "fine-tune"),
             (self.card_infer, "inference"),
         ]
 
-        # Make cards fill width in a vertical list (remove previous width clamps)
         for card, _key in self._task_cards:
             card.setMinimumHeight(92)
             card.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-            # IMPORTANT: if you previously set card.setMaximumWidth(220), remove it.
             tasks_col.addWidget(card)
 
         tasks_col.addStretch(1)
-
         self.tasks_scroll.setWidget(tasks_container)
         task_lay.addWidget(self.tasks_scroll)
 
         # Actions
-        actions = QHBoxLayout()
-        actions.addStretch(1)
+        actions = QHBoxLayout(); actions.addStretch(1)
         self.btn_cancel = QPushButton("Clear"); self.btn_cancel.setObjectName("GhostBtn")
-        self.btn_next = QPushButton("Continue"); self.btn_next.setObjectName("CTA")
-        self.btn_next.setEnabled(False)
-        actions.addWidget(self.btn_cancel)
-        actions.addWidget(self.btn_next)
+        self.btn_next = QPushButton("Continue"); self.btn_next.setObjectName("CTA"); self.btn_next.setEnabled(False)
+        actions.addWidget(self.btn_cancel); actions.addWidget(self.btn_next)
 
-        # Assemble
+        # Assemble; give the task card vertical stretch so it “eats” space
         root.addWidget(hero)
         root.addWidget(data_card)
-        root.addWidget(task_card)
+        task_card.setSizePolicy(task_card.sizePolicy().Expanding, task_card.sizePolicy().Expanding)
+        root.addWidget(task_card, 1)
         root.addLayout(actions)
 
         # Keep references
         self._btn_img = btn_img
         self._btn_lab = btn_lab
 
-        # Soft width constraints
+        # width constraints
         self.setMinimumWidth(400)
         self.setMaximumWidth(560)
 
@@ -143,7 +134,7 @@ class ProjectSetupTab(QWidget):
 
         for card, key in self._task_cards:
             self.task_group.addButton(card.radio())
-            card.clicked.connect(lambda c=card: self._on_card_clicked(c))
+            card.clicked.connect(lambda c=card: self._on_card_clicked(c))  # IMPORTANT: no arg expected by signal
 
         self.btn_cancel.clicked.connect(self._on_cancel)
         self.btn_next.clicked.connect(self._on_continue)
@@ -172,7 +163,6 @@ class ProjectSetupTab(QWidget):
         return ""
 
     def _validate_ready(self):
-        # Allow inference to skip label folder if you want (optional):
         task = self._selected_task()
         has_images = bool(self.image_path.text().strip())
         has_labels = bool(self.label_path.text().strip())

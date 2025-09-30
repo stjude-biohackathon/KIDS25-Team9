@@ -50,7 +50,7 @@ class Card(QFrame):
 
 
 class SelectableCard(QFrame):
-    clicked = QtCore.Signal()
+    clicked = QtCore.Signal()  # emits no args
 
     def __init__(self, title: str, subtitle: str = "", parent=None):
         super().__init__(parent)

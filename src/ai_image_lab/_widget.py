@@ -9,41 +9,42 @@ from ui.data_processing_tab import DataProcessingTab
 from ui.train_tab import TrainTab
 from ui.inference_tab import InferenceTab
 
-
 MODEL_BUILDING_TASKS = {"semantic-2d", "semantic-3d", "instance", "fine-tune"}
 INFERENCE_TASK = "inference"
 
 
 class ModelBuilderWidget(QtWidgets.QWidget):
     """
-    Container that shows tabs only AFTER a model-building task is chosen:
-    Tabs: Annotation, Data Processing, Training
+    Container that shows tabs AFTER a model-building task is chosen:
+      Tabs: Annotation, Data Processing, Training
     """
     back_requested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        lay = QVBoxLayout(self)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(8)
 
-        self.tabs = QTabWidget()
+        self.tabs = QtWidgets.QTabWidget()
         self.tabs.setObjectName("ModernTabs")
         self.tabs.setDocumentMode(True)
         self.tabs.setTabPosition(QTabWidget.North)
         self.tabs.setUsesScrollButtons(True)
         self.tabs.tabBar().setExpanding(False)
         self.tabs.tabBar().setElideMode(QtCore.Qt.ElideNone)
+        self.tabs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         # tabs
         self.tab_annotation = AnnotationTab()
         self.tab_processing = DataProcessingTab()
         self.tab_train = TrainTab()
 
-        self.tabs.addTab(self.tab_annotation, "   Annotation   ")
-        self.tabs.addTab(self.tab_processing, "   Data Processing   ")
-        self.tabs.addTab(self.tab_train, "   Training   ")
-
+        self.tabs.addTab(self.tab_annotation, "   Annotation    ")
+        self.tabs.addTab(self.tab_processing, "    Data Processing    ")
+        self.tabs.addTab(self.tab_train, "    Training    ")
 
         # Back button row
         btn_row = QtWidgets.QHBoxLayout()
@@ -51,8 +52,7 @@ class ModelBuilderWidget(QtWidgets.QWidget):
         self.btn_back = QtWidgets.QPushButton("Back to Tasks")
         btn_row.addWidget(self.btn_back)
 
-        self.tabs.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        lay.addWidget(self.tabs, 1)
+        lay.addWidget(self.tabs, 1)  # give vertical stretch to consume space
         lay.addLayout(btn_row)
 
         self.btn_back.clicked.connect(self.back_requested.emit)
@@ -63,7 +63,7 @@ class Lab(QWidget):
     Main container:
       - Stage 0: ProjectSetupTab (task selection + dataset paths)
       - Stage 1: ModelBuilderWidget (Annotation, Data Processing, Training tabs)
-      - Stage 2: Inference view (as a task, not a tab)
+      - Stage 2: Inference page (as a task, not a tab)
     """
     def __init__(self, napari_viewer=None):
         super().__init__()
@@ -72,27 +72,30 @@ class Lab(QWidget):
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setStyleSheet(STYLE_SHEET)
 
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.setMinimumSize(0, 0)
+
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        # Stacked stages
+        # Stacked stages live inside a wrapper widget so expansion persists after reopen
         self.stage = QStackedLayout()
-        root.addLayout(self.stage, 1)
 
-        # Stage 0: project setup
         self.project_page = ProjectSetupTab()
-        self.stage.addWidget(self.project_page)
-
-        # Stage 1: model builder (tabs)
         self.builder_page = ModelBuilderWidget()
-        self.stage.addWidget(self.builder_page)
-
-        # Stage 2: inference page
         self.infer_page = InferenceTab()
+
+        wrapper = QtWidgets.QWidget()
+        wrapper.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        wrapper.setLayout(self.stage)
+        root.addWidget(wrapper, 1)
+
+        self.stage.addWidget(self.project_page)
+        self.stage.addWidget(self.builder_page)
         self.stage.addWidget(self.infer_page)
 
-        # Preferred size (keep under ~50% viewer width)
+        # width guard (~50% of viewer)
         self.setMinimumWidth(400)
         self.setMaximumWidth(560)
 
@@ -114,6 +117,5 @@ class Lab(QWidget):
     def _go_back_to_project(self):
         self.stage.setCurrentWidget(self.project_page)
 
-    # Helpful for napari when it asks for a preferred size
     def sizeHint(self):
         return QtCore.QSize(520, 720)

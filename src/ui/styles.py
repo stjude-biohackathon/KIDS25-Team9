@@ -69,12 +69,11 @@ QPushButton#CTA:disabled { background: #1a2230; color: #5f728a; }
     border: 1px solid #1c2634;
     border-radius: 16px;
 }
-#Card { box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
-
+#Card { /* no box-shadow in QSS */ }
 #SelectableCard[active="true"] {
     border: 1px solid #3a84ff;
-    box-shadow: 0 0 0 3px rgba(58,132,255,0.18);
 }
+
 QLabel#CardTitle { color: #e6edf3; font-weight: 600; }
 QLabel#CardSubtitle { color: #9fb0c1; font-size: 12px; }
 

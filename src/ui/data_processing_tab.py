@@ -8,11 +8,12 @@ from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 
 
 class DataProcessingTab(QWidget):
-    requested_run = QtCore.Signal(dict)  # emits {augmentations:{}, normalization:{}, annotate:bool}
+    requested_run = QtCore.Signal(dict)  # emits {augmentations:{}, normalization:{}}
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Root")
+        self.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Expanding)
         self._build_ui()
 
     def _build_ui(self):
@@ -20,12 +21,13 @@ class DataProcessingTab(QWidget):
         root.setContentsMargins(*DEFAULT_CONTENT_MARGINS)
         root.setSpacing(DEFAULT_SPACING)
 
-        # building the scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setSizePolicy(scroll.sizePolicy().Expanding, scroll.sizePolicy().Expanding)
+
         body = QWidget()
+        body.setSizePolicy(body.sizePolicy().Expanding, body.sizePolicy().Expanding)
         body_lay = QVBoxLayout(body)
         body_lay.setContentsMargins(2, 2, 2, 2)
         body_lay.setSpacing(DEFAULT_SPACING)
@@ -33,8 +35,7 @@ class DataProcessingTab(QWidget):
         # Augmentations Card
         aug_card = Card()
         aug_lay = aug_card.layout()
-        lbl = QLabel("Data Augmentation")
-        lbl.setObjectName("H2")
+        lbl = QLabel("Data Augmentation"); lbl.setObjectName("H2")
         aug_lay.addWidget(lbl)
 
         self.cb_flip = QCheckBox("Random flips")
@@ -47,30 +48,26 @@ class DataProcessingTab(QWidget):
         # Normalization Card
         norm_card = Card()
         norm_lay = norm_card.layout()
-        lbl2 = QLabel("Preprocessing / Normalization")
-        lbl2.setObjectName("H2")
+        lbl2 = QLabel("Preprocessing / Normalization"); lbl2.setObjectName("H2")
         norm_lay.addWidget(lbl2)
 
         row_norm = QHBoxLayout()
         self.norm_method = QComboBox()
         self.norm_method.addItems(["none", "z-score", "min-max", "percentile-clip+z"])
         self.norm_clip = QSpinBox(); self.norm_clip.setRange(0, 20); self.norm_clip.setValue(2)
-        row_norm.addWidget(QLabel("Method"))
-        row_norm.addWidget(self.norm_method)
-        row_norm.addWidget(QLabel("Clip %"))
-        row_norm.addWidget(self.norm_clip)
+        row_norm.addWidget(QLabel("Method")); row_norm.addWidget(self.norm_method)
+        row_norm.addWidget(QLabel("Clip %")); row_norm.addWidget(self.norm_clip)
         norm_lay.addLayout(row_norm)
 
         # Actions
-        actions = QHBoxLayout()
-        actions.addStretch(1)
-        self.btn_run = QPushButton("Apply")
-        self.btn_run.setObjectName("CTA")
+        actions = QHBoxLayout(); actions.addStretch(1)
+        self.btn_run = QPushButton("Apply"); self.btn_run.setObjectName("CTA")
         actions.addWidget(self.btn_run)
 
         body_lay.addWidget(aug_card)
         body_lay.addWidget(norm_card)
         body_lay.addLayout(actions)
+
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 

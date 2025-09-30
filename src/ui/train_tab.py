@@ -7,11 +7,12 @@ from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 
 
 class TrainTab(QWidget):
-    start_training = QtCore.Signal(dict)  # emits {mode: "train"|"finetune", epochs:int, batch:int}
+    start_training = QtCore.Signal(dict)  # {mode: "train"|"finetune", epochs:int, batch:int}
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Root")
+        self.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Expanding)
         self._build_ui()
 
     def _build_ui(self):
@@ -24,19 +25,20 @@ class TrainTab(QWidget):
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setSizePolicy(scroll.sizePolicy().Expanding, scroll.sizePolicy().Expanding)
 
-        body = QWidget(); body_lay = QVBoxLayout(body)
-        body_lay.setContentsMargins(2,2,2,2); body_lay.setSpacing(DEFAULT_SPACING)
+        body = QWidget()
+        body.setSizePolicy(body.sizePolicy().Expanding, body.sizePolicy().Expanding)
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(2,2,2,2)
+        body_lay.setSpacing(DEFAULT_SPACING)
 
         card = Card(); lay = card.layout()
-        title = QLabel("Training")
-        title.setObjectName("H2"); lay.addWidget(title)
+        title = QLabel("Training"); title.setObjectName("H2"); lay.addWidget(title)
 
         self.cb_train = QCheckBox("Train from scratch")
         self.cb_finetune = QCheckBox("Fine-tune existing model")
         self.cb_train.stateChanged.connect(lambda _: self._sync_mode(self.cb_train))
         self.cb_finetune.stateChanged.connect(lambda _: self._sync_mode(self.cb_finetune))
-        lay.addWidget(self.cb_train)
-        lay.addWidget(self.cb_finetune)
+        lay.addWidget(self.cb_train); lay.addWidget(self.cb_finetune)
 
         hp_row = QHBoxLayout()
         self.epochs = QSpinBox(); self.epochs.setRange(1, 1000); self.epochs.setValue(50)
@@ -46,12 +48,12 @@ class TrainTab(QWidget):
         lay.addLayout(hp_row)
 
         actions = QHBoxLayout(); actions.addStretch(1)
-        self.btn_start = QPushButton("Start Training")
-        self.btn_start.setObjectName("CTA")
+        self.btn_start = QPushButton("Start Training"); self.btn_start.setObjectName("CTA")
         actions.addWidget(self.btn_start)
 
         body_lay.addWidget(card)
         body_lay.addLayout(actions)
+
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 

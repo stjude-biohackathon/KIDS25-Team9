@@ -11,6 +11,7 @@ class InferenceTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("Root")
+        self.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Expanding)
         self._build_ui()
 
     def _build_ui(self):
@@ -18,18 +19,20 @@ class InferenceTab(QWidget):
         root.setContentsMargins(*DEFAULT_CONTENT_MARGINS)
         root.setSpacing(DEFAULT_SPACING)
 
-        scroll = QScrollArea();
-        scroll.setWidgetResizable(True);
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setSizePolicy(scroll.sizePolicy().Expanding, scroll.sizePolicy().Expanding)
 
-        body = QWidget(); body_lay = QVBoxLayout(body)
-        body_lay.setContentsMargins(2,2,2,2); body_lay.setSpacing(DEFAULT_SPACING)
+        body = QWidget()
+        body.setSizePolicy(body.sizePolicy().Expanding, body.sizePolicy().Expanding)
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(2,2,2,2)
+        body_lay.setSpacing(DEFAULT_SPACING)
 
         # Input card
         input_card = Card(); il = input_card.layout()
-        lbl = QLabel("Inference")
-        lbl.setObjectName("H2"); il.addWidget(lbl)
+        lbl = QLabel("Inference"); lbl.setObjectName("H2"); il.addWidget(lbl)
 
         self.input_path = DropLineEdit("Drop a folder or single image…")
         btn_browse_in = QPushButton("Browse"); btn_browse_in.setObjectName("PrimaryBtn")
@@ -37,8 +40,7 @@ class InferenceTab(QWidget):
 
         # Output save
         out_card = Card(); ol = out_card.layout()
-        lbl2 = QLabel("Output Settings")
-        lbl2.setObjectName("H2"); ol.addWidget(lbl2)
+        lbl2 = QLabel("Output Settings"); lbl2.setObjectName("H2"); ol.addWidget(lbl2)
 
         self.save_path = DropLineEdit("Drop a folder to save results…")
         btn_browse_out = QPushButton("Browse"); btn_browse_out.setObjectName("SecondaryBtn")
@@ -56,6 +58,7 @@ class InferenceTab(QWidget):
         body_lay.addWidget(input_card)
         body_lay.addWidget(out_card)
         body_lay.addLayout(actions)
+
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
@@ -75,7 +78,7 @@ class InferenceTab(QWidget):
                 dest.setText(dirname)
         elif file_ok:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Select Image or Folder", "",
+                self, "Select Image", "",
                 "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All (*.*)"
             )
             if path:
