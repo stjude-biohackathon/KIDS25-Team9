@@ -1,0 +1,2 @@
+[napari.manifest]
+ai-image-lab = ai_image_lab:napari.yaml
