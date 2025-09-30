@@ -9,3 +9,7 @@ src/ai_image_lab.egg-info/SOURCES.txt
 src/ai_image_lab.egg-info/dependency_links.txt
 src/ai_image_lab.egg-info/entry_points.txt
 src/ai_image_lab.egg-info/top_level.txt
+src/models/base_model.py
+src/models/mask_rcnn_model.py
+src/utilities/__init__.py
+src/utilities/dataset_builder.py
