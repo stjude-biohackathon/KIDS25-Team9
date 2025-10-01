@@ -15,7 +15,7 @@ from transformers import (
     Sam2Model,
     Sam2Processor
 )
-
+import json
 
 # # select the device for computation
 if torch.cuda.is_available():
@@ -141,8 +141,6 @@ class SAM2(BaseModel):
 
         self.model.eval()
 
-
-
         with torch.no_grad():
             ground_truth_mask = np.array(dataset[idx]["label"])
             prompt = get_bounding_box(ground_truth_mask)
@@ -159,87 +157,85 @@ class SAM2(BaseModel):
 if __name__ == "__main__":
     large_images = tifffile.imread(r"Images\training.tif")
     large_masks = tifffile.imread(r"Labels\training_groundtruth.tif")
+    config_file = r'config.json'
 
-    patch_size = 256
-    step = 256
+    with open(config_file, 'r') as f:
+        config = json.load(f)
 
-    all_img_patches = []
+        patch_size = 256
+        step = 256
 
-    for img in range(large_images.shape[0]):
-        large_image = large_images[img]
-        patches_img = patchify(large_image, (patch_size, patch_size), step=step)  #Step=256 for 256 patches means no overlap
+        all_img_patches = []
 
-        for i in range(patches_img.shape[0]):
-            for j in range(patches_img.shape[1]):
+        for img in range(large_images.shape[0]):
+            large_image = large_images[img]
+            patches_img = patchify(large_image, (patch_size, patch_size), step=step)  #Step=256 for 256 patches means no overlap
 
-                single_patch_img = patches_img[i,j,:,:]
-                all_img_patches.append(single_patch_img)
+            for i in range(patches_img.shape[0]):
+                for j in range(patches_img.shape[1]):
 
-    images = np.array(all_img_patches)
+                    single_patch_img = patches_img[i,j,:,:]
+                    all_img_patches.append(single_patch_img)
 
-    all_mask_patches = []
-    for img in range(large_masks.shape[0]):
-        large_mask = large_masks[img]
-        patches_mask = patchify(large_mask, (patch_size, patch_size), step=step)  #Step=256 for 256 patches means no overlap
+        images = np.array(all_img_patches)
 
-        for i in range(patches_mask.shape[0]):
-            for j in range(patches_mask.shape[1]):
+        all_mask_patches = []
+        for img in range(large_masks.shape[0]):
+            large_mask = large_masks[img]
+            patches_mask = patchify(large_mask, (patch_size, patch_size), step=step)  #Step=256 for 256 patches means no overlap
 
-                single_patch_mask = patches_mask[i,j,:,:]
-                single_patch_mask = (single_patch_mask / 255.).astype(np.uint8)
-                all_mask_patches.append(single_patch_mask)
+            for i in range(patches_mask.shape[0]):
+                for j in range(patches_mask.shape[1]):
 
-    masks = np.array(all_mask_patches)
+                    single_patch_mask = patches_mask[i,j,:,:]
+                    single_patch_mask = (single_patch_mask / 255.).astype(np.uint8)
+                    all_mask_patches.append(single_patch_mask)
 
-    # Create a list to store the indices of non-empty masks
-    valid_indices = [i for i, mask in enumerate(masks) if mask.max() != 0]
-    # Filter the image and mask arrays to keep only the non-empty pairs
-    filtered_images = images[valid_indices]
-    filtered_masks = masks[valid_indices]
-    print("Image shape:", filtered_images.shape)  # e.g., (num_frames, height, width, num_channels)
-    print("Mask shape:", filtered_masks.shape)
-    print(f"Image data type: {filtered_images.dtype}")
-    print(f"Mask data type: {filtered_masks.dtype}")
+        masks = np.array(all_mask_patches)
 
-    # Convert the NumPy arrays to Pillow images and store them in a dictionary
-    dataset_dict = {
-        "image": [Image.fromarray(img) for img in filtered_images],
-        "label": [Image.fromarray(mask) for mask in filtered_masks],
-    }
+        # Create a list to store the indices of non-empty masks
+        valid_indices = [i for i, mask in enumerate(masks) if mask.max() != 0]
+        # Filter the image and mask arrays to keep only the non-empty pairs
+        filtered_images = images[valid_indices]
+        filtered_masks = masks[valid_indices]
+        print("Image shape:", filtered_images.shape)  # e.g., (num_frames, height, width, num_channels)
+        print("Mask shape:", filtered_masks.shape)
+        print(f"Image data type: {filtered_images.dtype}")
+        print(f"Mask data type: {filtered_masks.dtype}")
 
-    # Create the dataset using the datasets.Dataset class
-    dataset = HFDataset.from_dict(dataset_dict)
+        # Convert the NumPy arrays to Pillow images and store them in a dictionary
+        dataset_dict = {
+            "image": [Image.fromarray(img) for img in filtered_images],
+            "label": [Image.fromarray(mask) for mask in filtered_masks],
+        }
 
-    # processor = Sam2Processor.from_pretrained("facebook/sam2.1-hiera-large")
-    # train_dataset = SAM2Dataset(dataset=dataset, processor=processor)
-    # train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True, drop_last=False)
-    # print("Outside the loop")
-    # batch = next(iter(train_dataloader))
-    # for k,v in batch.items():
-    #     print(k,v.shape)
+        # Create the dataset using the datasets.Dataset class
+        dataset = HFDataset.from_dict(dataset_dict)
 
-    # print(batch["ground_truth_mask"].shape)
+        # processor = Sam2Processor.from_pretrained("facebook/sam2.1-hiera-large")
+        # train_dataset = SAM2Dataset(dataset=dataset, processor=processor)
+        # train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True, drop_last=False)
+        # print("Outside the loop")
+        # batch = next(iter(train_dataloader))
+        # for k,v in batch.items():
+        #     print(k,v.shape)
 
-    # print("-----_-------")
+        # print(batch["ground_truth_mask"].shape)
 
-    custom_model = SAM2(config={
-        "model_name": "facebook/sam2.1-hiera-large",
-        "learning_rate": 0.00001,
-        "weight_decay": 0,
-        "epochs": 1,
-        "batch_size": 2
-    })
-     
-    custom_model.train(dataset)
-    # torch.save(custom_model.state_dict(), "mito_model_checkpoint.pth")
+        # print("-----_-------")
 
-    idx = random.randint(0, filtered_images.shape[0]-1)
-    test_image = dataset[idx]["image"]
+        custom_model = SAM2(config=config)
+        
+        custom_model.train(dataset)
+        # torch.save(custom_model.state_dict(), "mito_model_checkpoint.pth")
 
-    pred_masks, pred_prob = custom_model.infer(test_image)
+        idx = random.randint(0, filtered_images.shape[0]-1)
+        test_image = dataset[idx]["image"]
 
-    # tifffile.imwrite("test_image.tif", np.array(test_image))
-    # tifffile.imwrite("pred_mask.tif", pred_masks)
-    # tifffile.imwrite("probability.tif", pred_prob)
+        pred_masks, pred_prob = custom_model.infer(test_image)
+
+        # tifffile.imwrite("test_image.tif", np.array(test_image))
+        # tifffile.imwrite("pred_mask.tif", pred_masks)
+        # tifffile.imwrite("probability.tif", pred_prob)
 
 
