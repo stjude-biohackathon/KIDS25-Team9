@@ -94,7 +94,7 @@ class InferenceTab(QWidget):
         src_row = QHBoxLayout(); src_row.setSpacing(8)
         src_row.addWidget(QLabel("Model source"), 0)
         self.model_source = QComboBox()
-        self.model_source.addItems(["Hugging Face", "Bioimage IO", "CBI Model Zoo", "Local"])
+        self.model_source.addItems(["Local","Hugging Face", "Bioimage IO", "CBI Model Zoo"])
         src_row.addWidget(self.model_source, 1)
         lay.addLayout(src_row)
 
