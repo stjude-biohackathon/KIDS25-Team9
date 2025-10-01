@@ -1,3 +1,4 @@
+# FILE: ui/main_tab.py
 import os
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
@@ -8,6 +9,7 @@ from qtpy.QtWidgets import (
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card, DropLineEdit, SelectableCard, labeled_row
 from ui.state import state
+
 
 class ProjectSetupTab(QWidget):
     """
@@ -27,8 +29,8 @@ class ProjectSetupTab(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(10)
+        root.setContentsMargins(*DEFAULT_CONTENT_MARGINS)
+        root.setSpacing(DEFAULT_SPACING)
 
         # Hero
         hero = QFrame(); hero.setObjectName("Hero")
@@ -73,10 +75,10 @@ class ProjectSetupTab(QWidget):
         self.tasks_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.tasks_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         self.tasks_scroll.setFrameShape(QFrame.NoFrame)
-        self.tasks_scroll.setSizePolicy(self.tasks_scroll.sizePolicy().Expanding, self.tasks_scroll.sizePolicy().Expanding)
+        self.tasks_scroll.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         tasks_container = QWidget()
-        tasks_container.setSizePolicy(tasks_container.sizePolicy().Expanding, tasks_container.sizePolicy().Expanding)
+        tasks_container.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         tasks_col = QVBoxLayout(tasks_container)
         tasks_col.setContentsMargins(0, 0, 0, 0)
         tasks_col.setSpacing(10)
@@ -86,6 +88,7 @@ class ProjectSetupTab(QWidget):
         self.card_sem3d = SelectableCard("Semantic Segmentation (3D)", "Voxel-wise classification on volumes.")
         self.card_inst  = SelectableCard("Instance Segmentation", "Detect and separate individual objects.")
         self.card_fine  = SelectableCard("Fine-tune", "Start from a pre-trained model and adapt to your data.")
+        self.card_samft = SelectableCard("Fine Tune SAM", "Fine-tune Segment Anything on your dataset.")
         self.card_infer = SelectableCard("Inference", "Run a trained model on images or a folder.")
 
         self._task_cards = [
@@ -93,6 +96,7 @@ class ProjectSetupTab(QWidget):
             (self.card_sem3d, "semantic-3d"),
             (self.card_inst,  "instance"),
             (self.card_fine,  "fine-tune"),
+            (self.card_samft, "fine-tune-sam"),
             (self.card_infer, "inference"),
         ]
 
@@ -114,7 +118,7 @@ class ProjectSetupTab(QWidget):
         # Assemble; give the task card vertical stretch so it “eats” space
         root.addWidget(hero)
         root.addWidget(data_card)
-        task_card.setSizePolicy(task_card.sizePolicy().Expanding, task_card.sizePolicy().Expanding)
+        task_card.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         root.addWidget(task_card, 1)
         root.addLayout(actions)
 
@@ -124,7 +128,6 @@ class ProjectSetupTab(QWidget):
 
         # width constraints
         self.setMinimumWidth(400)
-        #self.setMaximumWidth(560)
 
         # Events
         self._btn_img.clicked.connect(lambda: self._choose_dir(self.image_path))
@@ -134,7 +137,7 @@ class ProjectSetupTab(QWidget):
 
         for card, key in self._task_cards:
             self.task_group.addButton(card.radio())
-            card.clicked.connect(lambda c=card: self._on_card_clicked(c))  # IMPORTANT: no arg expected by signal
+            card.clicked.connect(lambda c=card: self._on_card_clicked(c))
 
         self.btn_cancel.clicked.connect(self._on_cancel)
         self.btn_next.clicked.connect(self._on_continue)
@@ -146,7 +149,7 @@ class ProjectSetupTab(QWidget):
         if dirname:
             line_edit.setText(dirname)
 
-    def _on_card_clicked(self, card: SelectableCard):
+    def _on_card_clicked(self, card: 'SelectableCard'):
         for c, _k in self._task_cards:
             c.setChecked(c is card)
         self._validate_ready()
@@ -156,6 +159,7 @@ class ProjectSetupTab(QWidget):
                    self.card_sem3d: "semantic-3d",
                    self.card_inst:  "instance",
                    self.card_fine:  "fine-tune",
+                   self.card_samft: "fine-tune-sam",
                    self.card_infer: "inference"}
         for card, key in mapping.items():
             if card.isChecked():
@@ -166,7 +170,14 @@ class ProjectSetupTab(QWidget):
         task = self._selected_task()
         has_images = bool(self.image_path.text().strip())
         has_labels = bool(self.label_path.text().strip())
-        ok = has_images and ((task == "inference") or has_labels) and bool(task)
+
+        # Inference: allow continue with NO datasets selected
+        if task == "inference":
+            ok = True
+        else:
+            # All other tasks require both images & labels
+            ok = bool(task) and has_images and has_labels
+
         self.btn_next.setEnabled(ok)
 
     def _on_cancel(self):
@@ -182,8 +193,8 @@ class ProjectSetupTab(QWidget):
         state.input_lbl_dir = self.label_path.text().strip()
 
         payload = {
-            "images": self.image_path.text().strip(),
-            "labels": self.label_path.text().strip(),
-            "task": self._selected_task(),
+            "images": state.input_img_dir,
+            "labels": state.input_lbl_dir,
+            "task": state.task,
         }
         self.continued.emit(payload)

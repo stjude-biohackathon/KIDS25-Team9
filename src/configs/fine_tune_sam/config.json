@@ -13,5 +13,3 @@
     "inference_model_path": "checkpoints/maskrcnn_20250930_114823/maskrcnn_best_epoch53.pth",
     "saved_model_path": "checkpoints/test/"
   }
-
-  
