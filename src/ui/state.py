@@ -7,6 +7,7 @@ class AppState:
     input_lbl_dir: str = ""
     aug_output_img_dir: str = ""
     aug_output_lbl_dir: str = ""
+    is_aug: bool = False
 
 # A single shared instance you can import anywhere
 state = AppState()

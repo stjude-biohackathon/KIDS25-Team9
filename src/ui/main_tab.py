@@ -177,7 +177,9 @@ class ProjectSetupTab(QWidget):
         self._validate_ready()
 
     def _on_continue(self):
+        print("Here ?")
         state.task = self._selected_task()
+        print(state.task)
         state.input_img_dir = self.image_path.text().strip()
         state.input_lbl_dir = self.label_path.text().strip()
 

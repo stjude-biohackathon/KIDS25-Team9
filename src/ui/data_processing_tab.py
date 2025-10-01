@@ -1,5 +1,3 @@
-# FILE: ui/data_processing_tab.py
-
 from qtpy import QtCore, QtGui, QtWidgets
 from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QScrollArea, QFrame, QHBoxLayout,
@@ -124,17 +122,15 @@ class DataProcessingTab(QWidget):
     UI for building an augmentation config + quick test actions.
 
     NOTE:
-      - Input *image/label* directories are NOT shown here. They must be injected from the main tab via set_paths().
+      - Input *image/label* directories are NOT shown here. They come from ui.state.
       - Output *image/label* directories ARE configurable here.
 
     Signals:
-        requested_run(dict): emits full config for running the whole pipeline.
-        test_random_requested(str): emits the full path of a randomly chosen image.
-        test_sample_requested(str): emits the full path of the user-named image.
+        requested_run(dict): emits full config for running the whole pipeline (still available).
+        proceed_to_train(): emitted when Skip or Apply & Continue want to navigate to the Training tab.
     """
     requested_run = QtCore.Signal(dict)
-    test_random_requested = QtCore.Signal(str)
-    test_sample_requested = QtCore.Signal(str)
+    proceed_to_train = QtCore.Signal()
 
     _IMG_EXTS = (".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp")
 
@@ -143,12 +139,13 @@ class DataProcessingTab(QWidget):
         self.setObjectName("Root")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # paths injected from main tab
+        # Read paths/task directly from global state (requirement #1)
         self._input_img_dir = state.input_img_dir
         self._input_lbl_dir = state.input_lbl_dir
-
+        self._task = (state.task or "").strip()
 
         self._build_ui()
+        self._apply_task_rules()  # enforce 3D limitations for specific transforms
 
     # ---------------- UI ---------------- #
     def _build_ui(self):
@@ -169,7 +166,7 @@ class DataProcessingTab(QWidget):
         body_lay.setContentsMargins(2, 2, 2, 2)
         body_lay.setSpacing(DEFAULT_SPACING)
 
-        # ---- Outputs & iterations (inputs come from main tab) ----
+        # ---- Outputs & iterations (inputs come from state) ----
         io_card = Card()
         io_lay = io_card.layout()
         title = QLabel("Outputs & Iterations"); title.setObjectName("H2")
@@ -213,7 +210,7 @@ class DataProcessingTab(QWidget):
         self.sec_translation.add_row("Shift (min,max) fraction of size", self.translation_shift)
         body_lay.addWidget(self.sec_translation)
 
-        # Elastic
+        # Elastic (2D-only per requirement #3)
         self.sec_elastic = TransformSection("Elastic")
         self.elastic_alpha = QDoubleSpinBox(); self.elastic_alpha.setRange(0.0, 10.0); self.elastic_alpha.setSingleStep(0.1); self.elastic_alpha.setValue(1.0); self.elastic_alpha.setFixedWidth(90)
         self.elastic_sigma = QDoubleSpinBox(); self.elastic_sigma.setRange(0.0, 500.0); self.elastic_sigma.setSingleStep(1.0); self.elastic_sigma.setValue(50.0); self.elastic_sigma.setFixedWidth(90)
@@ -221,7 +218,7 @@ class DataProcessingTab(QWidget):
         self.sec_elastic.add_row("sigma", self.elastic_sigma)
         body_lay.addWidget(self.sec_elastic)
 
-        # Erasing (random erasing / cutout)
+        # Erasing (2D-only per requirement #3)
         self.sec_erasing = TransformSection("Erasing")
         self.erasing_scale = RangeField(minimum=0.0, maximum=1.0, step=0.01, decimals=3, default=(0.02, 0.33))
         self.erasing_ratio = RangeField(minimum=0.1, maximum=10.0, step=0.1, decimals=2, default=(0.3, 3.3))
@@ -230,7 +227,6 @@ class DataProcessingTab(QWidget):
         self.sec_erasing.add_row("Ratio (min,max)", self.erasing_ratio)
         self.sec_erasing.add_row("p", self.erasing_p)
         body_lay.addWidget(self.sec_erasing)
-
 
         # Scaling
         self.sec_scaling = TransformSection("Scaling")
@@ -263,7 +259,7 @@ class DataProcessingTab(QWidget):
         body_lay.addWidget(self.sec_vflip)
 
         # ---------- Bottom area ----------
-        # Quick test actions JUST ABOVE the apply/continue row (per request)
+        # Quick test actions JUST ABOVE the apply/continue row
         test_row = QHBoxLayout()
         test_row.setSpacing(8)
 
@@ -284,15 +280,15 @@ class DataProcessingTab(QWidget):
         test_row.addWidget(self.btn_sample)
         body_lay.addLayout(test_row)
 
-        # Config build & apply (kept as the very last row)
+        # Final action row: Skip / Apply & Continue
         actions = QHBoxLayout()
         actions.setSpacing(8)
         actions.addStretch(1)
-        self.btn_build = QPushButton("Build Config")
-        self.btn_build.setObjectName("SecondaryBtn")
+        self.btn_skip = QPushButton("Skip")               # requirement #2
+        self.btn_skip.setObjectName("SecondaryBtn")
         self.btn_run = QPushButton("Apply & Continue")
         self.btn_run.setObjectName("CTA")
-        actions.addWidget(self.btn_build)
+        actions.addWidget(self.btn_skip)
         actions.addWidget(self.btn_run)
         body_lay.addLayout(actions)
 
@@ -301,28 +297,48 @@ class DataProcessingTab(QWidget):
 
         # width guard (allow horizontal expansion; no max width cap)
         self.setMinimumWidth(380)
-        # self.setMaximumWidth(560)  # <-- removed to allow full horizontal expansion
 
         # Events
         btn_out_img.clicked.connect(lambda: self._choose_dir(self.output_img_dir))
         btn_out_lbl.clicked.connect(lambda: self._choose_dir(self.output_lbl_dir))
-        self.btn_build.clicked.connect(self._on_build_only)
-        self.btn_run.clicked.connect(self._on_build_and_emit)
+
+        # Stubs for now (requirement #4)
         self.btn_random.clicked.connect(self._on_run_random_one)
         self.btn_sample.clicked.connect(self._on_run_sample)
 
-    # ---------------- Path injection ---------------- #
-    def set_paths(self, input_img_dir: str, input_lbl_dir: str, output_img_dir: str = "", output_lbl_dir: str = ""):
+        # Skip and Apply & Continue (requirement #2 and #5)
+        self.btn_skip.clicked.connect(self._on_skip)
+        self.btn_run.clicked.connect(self._on_apply_and_continue)
+
+    # ---------------- Task-based UI rules ---------------- #
+    def _apply_task_rules(self):
         """
-        Receive input directories from the Project/Main tab.
-        Outputs can also be prefilled here (but are editable in the UI).
+        If task is semantic-3d: Elastic and Erasing are not allowed.
+        Clicking their checkbox should politely inform the user and uncheck them.
         """
-        self._input_img_dir = input_img_dir or ""
-        self._input_lbl_dir = input_lbl_dir or ""
-        if output_img_dir:
-            self.output_img_dir.setText(output_img_dir)
-        if output_lbl_dir:
-            self.output_lbl_dir.setText(output_lbl_dir)
+        if (self._task or "").lower() == "semantic-3d":
+            # connect interceptors
+            self.sec_elastic.chk.toggled.connect(lambda on: self._block_2d_only(self.sec_elastic, on))
+            self.sec_erasing.chk.toggled.connect(lambda on: self._block_2d_only(self.sec_erasing, on))
+            # ensure params are off initially
+            if self.sec_elastic.is_enabled():
+                self.sec_elastic.chk.setChecked(False)
+            if self.sec_erasing.is_enabled():
+                self.sec_erasing.chk.setChecked(False)
+
+    def _block_2d_only(self, section: TransformSection, on: bool):
+        if on:
+            QMessageBox.information(
+                self,
+                "Not available for 3D",
+                "Thanks for checking this! Elastic/Erasing transforms are available for 2D tasks only right now. "
+                "They’re disabled for Semantic 3D."
+            )
+            # revert to OFF
+            section.chk.blockSignals(True)
+            section.chk.setChecked(False)
+            section.chk.blockSignals(False)
+            section._set_enabled(False)
 
     # ---------------- Build config ---------------- #
     def _enabled_transforms(self):
@@ -336,12 +352,15 @@ class DataProcessingTab(QWidget):
             ("horizontal_flip", self.sec_hflip),
             ("vertical_flip", self.sec_vflip),
         ]
+        # If 3D, ensure elastic/erasing are not returned even if somehow toggled
+        if (self._task or "").lower() == "semantic-3d":
+            order = [(k, s) for (k, s) in order if k not in ("elastic", "erasing")]
         return [(k, sec) for (k, sec) in order if sec.is_enabled()]
 
     def get_config(self) -> dict:
         """
         Build a config dict matching the intended ImageAugmentor signature.
-        Input paths come from set_paths(); Output paths come from UI fields here.
+        Input paths come from state; Output paths from UI fields here.
         """
         transform_types = []
         params = {}
@@ -375,26 +394,25 @@ class DataProcessingTab(QWidget):
                 params[key] = {"p": float(self.vflip_p.value())}
 
         cfg = {
-            # directories
+            # directories (inputs from state)
             "input_img_dir": state.input_img_dir,
-            "input_lbl_dir": self._input_lbl_dir,
+            "input_lbl_dir": state.input_lbl_dir,
             "output_img_dir": self.output_img_dir.text().strip(),
             "output_lbl_dir": self.output_lbl_dir.text().strip(),
             # transforms
             "transform_types": transform_types,
             "iterations": int(self.iterations.value()),
             "params": params,
+            # meta
+            "task": self._task,
         }
         return cfg
 
     def set_from_config(self, cfg: dict):
         """Optional: prefill UI from a config dict of the same shape."""
-        self.set_paths(
-            cfg.get("input_img_dir", ""),
-            cfg.get("input_lbl_dir", ""),
-            cfg.get("output_img_dir", ""),
-            cfg.get("output_lbl_dir", ""),
-        )
+        # Inputs are driven by state; only prefill outputs/iters and transforms
+        self.output_img_dir.setText(cfg.get("output_img_dir", ""))
+        self.output_lbl_dir.setText(cfg.get("output_lbl_dir", ""))
         self.iterations.setValue(int(cfg.get("iterations", 2)))
 
         ttypes = set(cfg.get("transform_types", []))
@@ -443,92 +461,56 @@ class DataProcessingTab(QWidget):
         if dirname:
             dest.setText(dirname)
 
-    def _on_build_only(self):
-        cfg = self.get_config()
-        QtGui.QGuiApplication.clipboard().setText(str(cfg))
-        print(cfg)
-        QMessageBox.information(self, "Augment Config", "Config copied to clipboard.\n\nYou can now pass it to your pipeline.")
-
-    def _on_build_and_emit(self):
-        cfg = self.get_config()
-        self.requested_run.emit(cfg)
-
-    # ---------------- Quick Test buttons ---------------- #
+    # Requirement #4: stubs only
     def _on_run_random_one(self):
-        """
-        Pick one random image from the injected input image folder and emit/print its full path.
-        """
-        import os, random
-        folder = (state.input_img_dir or "").strip()
-        if not folder or not os.path.isdir(folder):
-            QMessageBox.warning(self, "Missing input folder", "Input image folder is not set.\nMake sure the main tab passed it via set_paths().")
-            return
-
-        files = [f for f in os.listdir(folder) if f.lower().endswith(self._IMG_EXTS)]
-        if not files:
-            QMessageBox.information(self, "No images found", f"No images with {self._IMG_EXTS} in:\n{folder}")
-            return
-
-        choice = random.choice(files)
-        full_path = os.path.join(folder, choice)
-        print(f"[DataProcessingTab] Random sample: {full_path}")
-        self.test_random_requested.emit(full_path)
-        QMessageBox.information(self, "Random Image", full_path)
+        cfg = self.get_config()
+        print("[DataProcessingTab] running this button: Run on one Random Image")
+        print("[DataProcessingTab] current config:", cfg)
 
     def _on_run_sample(self):
+        cfg = self.get_config()
+        print("[DataProcessingTab] running this button: Run on a Sample")
+        print("[DataProcessingTab] current config:", cfg)
+
+    # Requirement #2: Skip (go to Train without setting is_aug)
+    def _on_skip(self):
+        # do not touch state.is_aug
+        # do not set aug_output_* here
+        self._goto_training_tab()
+        self.proceed_to_train.emit()
+
+    # Requirement #5: Apply & Continue (set state + navigate)
+    def _on_apply_and_continue(self):
+        cfg = self.get_config()
+        # Update global state
+        state.is_aug = True
+        state.aug_output_img_dir = cfg.get("output_img_dir", "")
+        state.aug_output_lbl_dir = cfg.get("output_lbl_dir", "")
+        # still emit full config for any listeners that want to run augmentation now
+        self.requested_run.emit(cfg)
+        # navigate to Training
+        self._goto_training_tab()
+        self.proceed_to_train.emit()
+
+    # ------- Navigation helper: jump to "Training" tab in the parent QTabWidget ------- #
+    def _goto_training_tab(self) -> bool:
+
         """
-        Look up a user-provided image name in the injected input image folder (non-recursive).
-        Accepts name with or without extension. Prints/emits the full path on success.
+        Walk up the parent chain to find a QTabWidget (ModelBuilder tabs)
+        and switch to the tab named 'Training' (case-insensitive).
         """
-        name = (self.sample_name.text() or "").strip()
-        if not name:
-            QMessageBox.warning(self, "Enter a name", "Please enter an image name.")
-            return
-
-        full = self._find_sample_in_input_dir(name)
-        if not full:
-            QMessageBox.information(self, "Not found", f"Could not find '{name}' in:\n{state.input_img_dir}")
-            return
-
-        print(f"[DataProcessingTab] Sample match: {full}")
-        self.test_sample_requested.emit(full)
-        QMessageBox.information(self, "Sample Image", full)
-
-    def _find_sample_in_input_dir(self, name: str) -> str:
-        """
-        Search for `name` inside the input image folder (non-recursive).
-        If `name` has an extension, try exact filename match.
-        Otherwise, try exact base-name match across known extensions, then contains().
-        Returns full path if found, else empty string.
-        """
-        import os
-        folder = (state.input_img_dir or "").strip()
-        if not folder or not os.path.isdir(folder):
-            return ""
-
-        lname = name.lower()
-        has_ext = "." in lname
-
-        # First pass: exact match if extension given
-        if has_ext:
-            candidate = os.path.join(folder, name)
-            if os.path.isfile(candidate):
-                return candidate
-
-        # Second pass: try base name across known image extensions
-        base = lname.rsplit(".", 1)[0] if has_ext else lname
-        for f in os.listdir(folder):
-            lf = f.lower()
-            if not lf.endswith(self._IMG_EXTS):
-                continue
-            stem = lf.rsplit(".", 1)[0]
-            if stem == base:
-                return os.path.join(folder, f)
-
-        # Third pass: contains (fallback)
-        for f in os.listdir(folder):
-            lf = f.lower()
-            if lf.endswith(self._IMG_EXTS) and base in lf:
-                return os.path.join(folder, f)
-
-        return ""
+        w = self.parent()
+        while w is not None:
+            if isinstance(w, QtWidgets.QTabWidget):
+                # Prefer finding by label
+                for i in range(w.count()):
+                    if w.tabText(i).strip().lower() == "training":
+                        w.setCurrentIndex(i)
+                        return True
+                # Fallback to index 2 if label not found (Annotation, Data Processing, Training)
+                if w.count() >= 3:
+                    w.setCurrentIndex(2)
+                    return True
+                return False
+            w = w.parent()
+        return False
