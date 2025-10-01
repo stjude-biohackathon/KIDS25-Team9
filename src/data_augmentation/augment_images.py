@@ -217,7 +217,7 @@ class ImageAugmentor:
         if "translation" in types or "all" in types:
             trans_range = self.params.get("translation", {}).get("shift", (-0.05, 0.05))
             translate_percent = (
-                random.uniform(trans_range[0], trans_range[1]), random.uniform(trans_range[0], trans_range[1]))
+                random.uniform(trans_range[0], trans_range[1]))
         else:
             translate_percent = (0, 0)
 
@@ -280,6 +280,7 @@ class ImageAugmentor:
 
             if "translation" in types or "all" in types:
                 trans_range = self.params.get("translation", {}).get("shift", (-0.05, 0.05))
+                print(trans_range)
                 translate_percent = random.uniform(trans_range[0], trans_range[1])
             else:
                 translate_percent = 0
@@ -404,6 +405,9 @@ class ImageAugmentor:
         else:
             result = np.stack(aug_slices, axis=0)
 
+        if not is_image:
+            result = result.astype(np.uint16)
+
         if return_array:
             return result
         else:
@@ -414,7 +418,7 @@ class ImageAugmentor:
                 out_path = os.path.join(label_out_dir, f"{basename}_{iteration}_{unique_id}.tif")
             tifffile.imwrite(out_path, result)
 
-    def transform_sample(self, n: int=0) -> list:
+    def transform_sample(self, n: int = 0) -> list:
         """
         Apply a random transform (same as for augment) to the nth image and corresponding label(s), returning arrays.
         For 'labels', picks nth image and nth label.
@@ -478,9 +482,9 @@ def view_in_napari(img_array, lbl_arrays):
 # -------------------------
 if __name__ == "__main__":
     test_cases = [
-        ("multisegment", "Labels_instance"),
+        # ("multisegment", "Labels_instance"),
         # ("3d", "Labels"),
-        # ("2d", "Labels")
+        ("2d", "Labels")
     ]
     for data_type, label in test_cases:
         augmentor = ImageAugmentor(
@@ -489,13 +493,13 @@ if __name__ == "__main__":
             f'augmented/{data_type}/Images',
             f'augmented/{data_type}/{label}',
             transform_types=[
-                # "rotation",
-                # "translation",
-                #  "elastic",
-                #  "erasing",
-                # "scaling",
-                # "normalize",
-                # "horizontal_flip",
+                "rotation",
+                "translation",
+                "elastic",
+                "erasing",
+                "scaling",
+                "normalize",
+                "horizontal_flip",
                 "vertical_flip"
             ],
             iterations=2,
