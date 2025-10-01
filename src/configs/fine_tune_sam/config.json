@@ -1,0 +1,15 @@
+{
+    "num_classes": 6,
+    "input_data_path": "/home/cli74/Desktop/cbi/public/Biohackathon_2025/Datasets/mask_rcnn_new/",
+    "batch_size": 8,
+    "epoch":20,
+    "val_split": 0.8,
+    "learning_rate": 0.001,
+    "num_epochs": 10,
+    "inference_img": "/home/cli74/Desktop/cbi/public/Biohackathon_2025/Datasets/mask_rcnn_new/inference/0005.tif",
+    "infer_folder": "/home/cli74/Desktop/cbi/public/Biohackathon_2025/Datasets/mask_rcnn_new/inference/",
+    "inference_outputfolder": "predictions",
+    "score_threshold": 0.6,
+    "inference_model_path": "checkpoints/maskrcnn_20250930_114823/maskrcnn_best_epoch53.pth",
+    "saved_model_path": "checkpoints/test/"
+  }
