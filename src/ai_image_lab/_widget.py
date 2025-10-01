@@ -8,9 +8,11 @@ from ui.annotation_tab import AnnotationTab
 from ui.data_processing_tab import DataProcessingTab
 from ui.train_tab import TrainTab
 from ui.inference_tab import InferenceTab
+from ui.fine_tune_sam_tab import FineTuneSAMTab  # NEW
 
 MODEL_BUILDING_TASKS = {"semantic-2d", "semantic-3d", "instance", "fine-tune"}
 INFERENCE_TASK = "inference"
+FINE_TUNE_SAM_TASK = "fine-tune-sam"  # NEW
 
 
 class ModelBuilderWidget(QtWidgets.QWidget):
@@ -64,6 +66,7 @@ class Lab(QWidget):
       - Stage 0: ProjectSetupTab (task selection + dataset paths)
       - Stage 1: ModelBuilderWidget (Annotation, Data Processing, Training tabs)
       - Stage 2: Inference page (as a task, not a tab)
+      - Stage 3: Fine Tune SAM page (dedicated)
     """
     def __init__(self, napari_viewer=None):
         super().__init__()
@@ -85,6 +88,7 @@ class Lab(QWidget):
         self.project_page = ProjectSetupTab()
         self.builder_page = ModelBuilderWidget()
         self.infer_page = InferenceTab()
+        self.samft_page = FineTuneSAMTab()              # NEW
 
         wrapper = QtWidgets.QWidget()
         wrapper.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -94,15 +98,18 @@ class Lab(QWidget):
         self.stage.addWidget(self.project_page)
         self.stage.addWidget(self.builder_page)
         self.stage.addWidget(self.infer_page)
+        self.stage.addWidget(self.samft_page)           # NEW
 
         # width guard (~50% of viewer)
         self.setMinimumWidth(400)
-        #self.setMaximumWidth(560)
+        # self.setMaximumWidth(560)
 
         # Wiring
         self.project_page.continued.connect(self._on_project_continue)
         self.builder_page.back_requested.connect(self._go_back_to_project)
         self.infer_page.back_requested.connect(self._go_back_to_project)
+        # (Optional) If you add a back button in FineTuneSAMTab, connect it here:
+        # self.samft_page.back_requested.connect(self._go_back_to_project)
 
     # ---------- Navigation ---------- #
     def _on_project_continue(self, payload: dict):
@@ -111,6 +118,8 @@ class Lab(QWidget):
             self.stage.setCurrentWidget(self.builder_page)
         elif task == INFERENCE_TASK:
             self.stage.setCurrentWidget(self.infer_page)
+        elif task == FINE_TUNE_SAM_TASK:                # NEW
+            self.stage.setCurrentWidget(self.samft_page)  # NEW
         else:
             QtWidgets.QMessageBox.warning(self, "Choose a task", "Please select a valid task.")
 
