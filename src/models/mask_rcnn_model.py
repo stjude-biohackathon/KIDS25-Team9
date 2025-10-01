@@ -11,12 +11,13 @@ from base_model import BaseModel
 from utilities.maskrcnn_dataset_builder import CellDataset, build_dataset_dataloader
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from qtpy.QtCore import QObject, Signal
 
 
-
-class MaskRCNNModel(BaseModel):
-
+class MaskRCNNModel(BaseModel, QObject):
+    progress = Signal(int)
     def __init__(self, num_classes=2, device=None):
+        QObject.__init__(self)
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self.architecture(num_classes).to(self.device)
 
@@ -56,7 +57,8 @@ class MaskRCNNModel(BaseModel):
         best_model_path = None
 
         for epoch in range(1, num_epochs + 1):
-            
+            progress_percent = int((epoch - 1) / num_epochs * 100) 
+            self.progress.emit(progress_percent)
             # Training loop
             self.model.train()
             total_loss = 0
@@ -88,6 +90,7 @@ class MaskRCNNModel(BaseModel):
                 torch.save(self.model.state_dict(), checkpoint_path)
                 print(f"  ✅ Saved checkpoint at {checkpoint_path}")
         # Save final model
+        self.progress.emit(100)
         final_path = os.path.join(save_dir, f"maskrcnn_final_epoch{num_epochs}.pth")
         torch.save(self.model.state_dict(), final_path)
         print(f"Final model saved at {final_path}")
@@ -296,7 +299,7 @@ class maskrcnn_final(MaskRCNNModel):
         self.learning_rate = self.cfg.get("learning_rate", 0.001)
         self.num_epochs = self.cfg.get("num_epochs", 20)
         self.score_thresh = self.cfg.get("score_threshold", 0.5)
-        self.inference_model_path = self.cfg["inference_model_path"]
+        self.inference_model_path = self.cfg.get(["inference_model_path"], None)
         self.saved_model_path = self.cfg['saved_model_path']
         self.inference_img = self.cfg.get("inference_img", None)
         self.infer_folder = self.cfg.get("infer_folder", None)
@@ -344,6 +347,8 @@ class maskrcnn_final(MaskRCNNModel):
             score_thresh=self.score_thresh,
             num_classes=self.num_classes
         )
+    
+
 
 
 if __name__ == "__main__":
