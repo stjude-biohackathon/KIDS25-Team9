@@ -10,10 +10,17 @@ from qtpy.QtWidgets import (
     QFileDialog, QSizePolicy, QMessageBox
 )
 
+# == UI imports ==
 from ui.common import Card, DropLineEdit, labeled_row
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.state import state
-import importlib
+
+# == Trainer class imports (explicit) ==
+# Adjust these imports to your actual project structure.
+from models.mask_rcnn_model import maskrcnn_final                  # instance
+#from trainers.semantic2d import Semantic2DTrainer                 # semantic-2d
+#from trainers.semantic3d import Semantic3DTrainer                 # semantic-3d
+#from trainers.finetune import FineTuneTrainer                     # fine-tune
 
 
 class TrainTab(QWidget):
@@ -25,24 +32,18 @@ class TrainTab(QWidget):
     - Keys containing 'path' or 'folder' -> directory field with Browse…
     - If task == 'fine-tune' -> shows 'Base model path' file picker (added to config before training)
     - Separate card: logs folder picker + progress bar + public receiver `on_progress(int)`
-    - Start Training -> writes new JSON from current UI and calls the appropriate TrainerClass.train(config_path)
+    - Start Training -> writes new JSON from the UI and calls the appropriate trainer using if/elif
     """
-    start_training = QtCore.Signal(dict)  # emits final config dict (optional for your listeners)
+    start_training = QtCore.Signal(dict)  # emits final config dict (optional)
 
-    # ---- Customize these to your project structure ---- #
+    # ---- Config file locations (adjust paths as needed) ---- #
     CONFIG_LOCATIONS = {
-        "semantic-2d": "configs/semantic_2d/config.json",
+        "semantic-2d": "configs/unet_2d/unet_2d_config.json",
         "semantic-3d": "configs/semantic_3d/config.json",
-        "instance":    "configs/instance/config.json",
+        "instance":    "configs/instance/maskrcnn_config_train.json",
         "fine-tune":   "configs/fine_tune/config.json",
     }
-    TRAINER_CLASSES = {
-        "semantic-2d": "trainers.semantic2d.Semantic2DTrainer",
-        "semantic-3d": "trainers.semantic3d.Semantic3DTrainer",
-        "instance":    "models.mask_rcnn_model.maskrcnn_final",
-        "fine-tune":   "trainers.finetune.FineTuneTrainer",
-    }
-    # --------------------------------------------------- #
+    # -------------------------------------------------------- #
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,8 +52,8 @@ class TrainTab(QWidget):
 
         self._task_used = None
         self._config = {}
-        self._schema = {}      # dotted_key -> {"type":..., "elem_type":...}
-        self._editors = {}     # dotted_key -> QWidget editor
+        self._schema = {}          # dotted_key -> {"type":..., "elem_type":...}
+        self._editors = {}         # dotted_key -> QWidget editor
         self._dir_fields = set()   # dotted_keys that are directory fields
         self._base_model_edit = None  # only for fine-tune
 
@@ -61,10 +62,8 @@ class TrainTab(QWidget):
         self._progress = None
 
         self._build_ui()
-        # initial populate
         self._ensure_config_loaded()
 
-    # refresh when shown (handles "Back to Tasks" -> change task -> return)
     def showEvent(self, e: QtGui.QShowEvent) -> None:
         super().showEvent(e)
         self._ensure_config_loaded()
@@ -106,7 +105,6 @@ class TrainTab(QWidget):
         title = QLabel("Training Parameters"); title.setObjectName("H2")
         pl.addWidget(title)
 
-        # inner scroll inside the card to handle large configs
         self.param_scroll = QScrollArea()
         self.param_scroll.setWidgetResizable(True)
         self.param_scroll.setFrameShape(QFrame.NoFrame)
@@ -126,13 +124,11 @@ class TrainTab(QWidget):
         rl = self.run_card.layout()
         rtitle = QLabel("Run"); rtitle.setObjectName("H2"); rl.addWidget(rtitle)
 
-        # logs folder
         self._logs_dir_edit = DropLineEdit("Drop or browse a folder for training logs…")
         btn_logs = QPushButton("Browse"); btn_logs.setObjectName("SecondaryBtn")
         rl.addLayout(labeled_row("Logs folder", self._logs_dir_edit, btn_logs))
         btn_logs.clicked.connect(lambda: self._browse_dir(self._logs_dir_edit))
 
-        # progress bar
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
@@ -162,14 +158,15 @@ class TrainTab(QWidget):
         if task_now == self._task_used and self._config:
             return
 
-        # Show/Hide fine-tune card
         self.ft_card.setVisible(task_now == "fine-tune")
 
         cfg_path = self._resolve_config_path(task_now)
         if not cfg_path:
-            QMessageBox.warning(self, "Config missing",
-                                f"Could not locate a config.json for task '{task_now}'.\n"
-                                "Please update TrainTab.CONFIG_LOCATIONS or place a config file.")
+            QMessageBox.warning(
+                self, "Config missing",
+                f"Could not locate a config.json for task '{task_now}'.\n"
+                "Please update TrainTab.CONFIG_LOCATIONS or place a config file."
+            )
             return
 
         try:
@@ -184,14 +181,12 @@ class TrainTab(QWidget):
         self._schema.clear()
         self._editors.clear()
         self._dir_fields.clear()
-        # clear form
         while self.param_form.count():
             item = self.param_form.takeAt(0)
             w = item.widget()
             if w:
                 w.setParent(None)
 
-        # Build rows from config (flattened dotted keys)
         self._build_param_rows(self._config)
 
     def _resolve_config_path(self, task: str) -> str:
@@ -199,16 +194,14 @@ class TrainTab(QWidget):
         if task in self.CONFIG_LOCATIONS:
             path = self.CONFIG_LOCATIONS[task]
             script_dir = os.path.dirname(__file__)
-            path = os.path.join(
-                script_dir, "..", path
-            )
+            path = os.path.join(script_dir, "..", path)
             if os.path.isfile(path):
                 return path
-        # 2) common fallback
+        # 2) fallback guess
         guess = os.path.join("configs", task.replace("-", "_"), "config.json")
         if os.path.isfile(guess):
             return guess
-        # 3) last resort: ask user once
+        # 3) ask user
         dlg = QFileDialog(self, "Select config.json for task: " + task)
         dlg.setFileMode(QFileDialog.ExistingFile)
         dlg.setNameFilter("JSON files (*.json)")
@@ -218,29 +211,19 @@ class TrainTab(QWidget):
         return ""
 
     def _build_param_rows(self, cfg: dict, prefix: str = ""):
-        """
-        Recursively build a dotted-key form from a nested dict config.
-        """
         for key, val in cfg.items():
             dkey = f"{prefix}.{key}" if prefix else key
             if isinstance(val, dict):
-                # recurse into dict
                 self._build_param_rows(val, dkey)
             else:
                 editor = self._editor_for_value(dkey, val)
-                label = QLabel(dkey)
-                label.setObjectName("FieldLabel")
+                label = QLabel(dkey); label.setObjectName("FieldLabel")
                 if isinstance(editor, tuple):
-                    # (containerWidget, browse_button) for folder/path keys
                     self.param_form.addRow(label, editor[0])
                 else:
                     self.param_form.addRow(label, editor)
 
     def _editor_for_value(self, dotted_key: str, value):
-        """
-        Create an editor for a leaf value and record its schema.
-        Keys containing 'path' or 'folder' -> directory field with Browse.
-        """
         lname = dotted_key.lower()
         is_dir = ("path" in lname) or ("folder" in lname)
         self._schema[dotted_key] = self._infer_schema(value)
@@ -248,43 +231,29 @@ class TrainTab(QWidget):
         if is_dir:
             field = DropLineEdit("Drop or browse a folder…")
             btn = QPushButton("Browse"); btn.setObjectName("SecondaryBtn")
-            # container to align field + button
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0); row.setSpacing(6)
+            row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(6)
             cont = QWidget(); cont.setLayout(row)
             row.addWidget(field, 1); row.addWidget(btn)
             btn.clicked.connect(lambda _, dest=field: self._browse_dir(dest))
             self._editors[dotted_key] = field
             self._dir_fields.add(dotted_key)
-            # set initial value if it's a string
             if isinstance(value, str):
                 field.setText(value)
-            return cont  # container widget for the form row
+            return cont
 
-        # non-directory editors
         if isinstance(value, bool):
-            w = QCheckBox()
-            w.setChecked(bool(value))
+            w = QCheckBox(); w.setChecked(bool(value))
         elif isinstance(value, int):
-            w = QSpinBox()
-            w.setRange(-1_000_000_000, 1_000_000_000)
-            w.setValue(int(value))
+            w = QSpinBox(); w.setRange(-1_000_000_000, 1_000_000_000); w.setValue(int(value))
         elif isinstance(value, float):
-            w = QDoubleSpinBox()
-            w.setDecimals(6)
-            w.setRange(-1e12, 1e12)
-            w.setSingleStep(0.1)
-            w.setValue(float(value))
+            w = QDoubleSpinBox(); w.setDecimals(6); w.setRange(-1e12, 1e12); w.setSingleStep(0.1); w.setValue(float(value))
         elif isinstance(value, (list, tuple)):
-            # simple CSV editor; preserve element type from first item
-            w = QLineEdit()
-            w.setPlaceholderText("comma-separated list")
+            w = QLineEdit(); w.setPlaceholderText("comma-separated list")
             try:
                 w.setText(",".join(str(x) for x in value))
             except Exception:
                 w.setText("")
         else:
-            # string or unknown -> plain line edit
             w = QLineEdit()
             if value is not None:
                 w.setText(str(value))
@@ -293,9 +262,6 @@ class TrainTab(QWidget):
         return w
 
     def _infer_schema(self, value):
-        """
-        Store minimal type info so we can round-trip from editor -> JSON.
-        """
         if isinstance(value, list):
             elem_type = type(value[0]) if value else str
             return {"type": list, "elem_type": elem_type}
@@ -303,10 +269,6 @@ class TrainTab(QWidget):
 
     # ------------------ Collect / Write config ------------------ #
     def _collect_values(self) -> dict:
-        """
-        Rebuild a dict with same structure as self._config from editor values.
-        """
-        # start from a deep copy of original to preserve structure
         import copy
         out = copy.deepcopy(self._config)
 
@@ -315,7 +277,6 @@ class TrainTab(QWidget):
             val = self._value_from_editor(editor, schema)
             self._assign_by_dotted_key(out, dkey, val)
 
-        # Fine-tune: include base model path when present
         if (state.task or "").strip().lower() == "fine-tune":
             if self._base_model_edit and self._base_model_edit.text().strip():
                 out["base_model_path"] = self._base_model_edit.text().strip()
@@ -323,13 +284,12 @@ class TrainTab(QWidget):
         return out
 
     def _value_from_editor(self, editor, schema: dict):
-        # directory fields are DropLineEdit
         if isinstance(editor, DropLineEdit):
             return editor.text().strip()
 
-        # editor might be inside a container when dir field; handle that
-        if isinstance(editor, QWidget) and not isinstance(editor, (QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, DropLineEdit)):
-            # find first child editor
+        if isinstance(editor, QWidget) and not isinstance(
+            editor, (QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, DropLineEdit)
+        ):
             line = editor.findChild(QLineEdit)
             if line is not None:
                 return line.text().strip()
@@ -362,7 +322,6 @@ class TrainTab(QWidget):
                 except Exception:
                     casted.append(p)
             return casted
-        # default: string
         return editor.text().strip()
 
     def _assign_by_dotted_key(self, d: dict, dotted: str, value):
@@ -373,7 +332,6 @@ class TrainTab(QWidget):
         cur[parts[-1]] = value
 
     def _write_config_json(self, cfg: dict) -> str:
-        # Pick logs folder if set, else ask, else fallback to CWD
         dest_dir = self._logs_dir_edit.text().strip()
         if not dest_dir:
             dlg = QFileDialog(self, "Choose folder for training logs")
@@ -405,25 +363,51 @@ class TrainTab(QWidget):
         if fname:
             self._base_model_edit.setText(fname)
 
-    # ------------------ Trainer resolve / progress ------------------ #
-    def _resolve_trainer_class(self, task: str):
+    def run_dummy_progress(self, total_ms: int = 8000, steps: int = 100, finish_message: str | None = None):
         """
-        Import and return the trainer class for the task.
-        TRAINER_CLASSES should map task -> "module.ClassName"
+        Smoothly fills the progress bar to 100% in equal intervals (non-blocking).
+        total_ms: total duration in milliseconds (default ~8s)
+        steps:    number of ticks (default 100 -> 1% per tick)
         """
-        path = self.TRAINER_CLASSES.get(task)
-        if not path:
-            return None
-        try:
-            mod_name, cls_name = path.rsplit(".", 1)
-            mod = importlib.import_module(mod_name)
-            return getattr(mod, cls_name, None)
-        except Exception:
-            return None
+        # Lazy-create a timer we reuse across runs
+        if not hasattr(self, "_dummy_timer"):
+            self._dummy_timer = QtCore.QTimer(self)
+            self._dummy_timer.timeout.connect(self._on__dummy_tick)
 
+        # Reset state
+        self._dummy_total_steps = max(1, int(steps))
+        self._dummy_i = 0
+        self._dummy_finish_message = finish_message
+
+        # Configure timer interval and start
+        interval = max(10, int(total_ms) // self._dummy_total_steps)
+        self._dummy_timer.stop()
+        self._dummy_timer.setInterval(interval)
+        self._progress.setValue(0)
+        self._dummy_timer.start()
+
+    def _on__dummy_tick(self):
+        self._dummy_i += 1
+        if self._dummy_i >= getattr(self, "_dummy_total_steps", 100):
+            self._progress.setValue(100)
+            # stop first to avoid re-entry
+            self._dummy_timer.stop()
+            msg = getattr(self, "_dummy_finish_message", None)
+            if msg:
+                QtWidgets.QMessageBox.information(self, "Done", msg)
+        else:
+            pct = int(self._dummy_i * 100 / self._dummy_total_steps)
+            self._progress.setValue(pct)
+
+    def cancel_dummy_progress(self):
+        """Optional: stop the dummy progress early."""
+        t = getattr(self, "_dummy_timer", None)
+        if t and t.isActive():
+            t.stop()
+
+    # ------------------ Progress receiver ------------------ #
     @QtCore.Slot(int)
     def on_progress(self, value: int):
-        """Public receiver to update the progress bar from external signals."""
         self._progress.setValue(int(value))
 
     # ------------------ Start training ------------------ #
@@ -433,37 +417,95 @@ class TrainTab(QWidget):
             QMessageBox.warning(self, "No task", "Task is not set in state.")
             return
 
-        # collect UI -> dict
         cfg = self._collect_values()
 
-        # write to logs folder as training_config.json
         try:
             cfg_path = self._write_config_json(cfg)
         except Exception as e:
             QMessageBox.critical(self, "Write failed", f"Could not write config JSON:\n{type(e).__name__}: {e}")
             return
 
-        # resolve trainer class & run
-        TrainerClass = self._resolve_trainer_class(task)
-        if TrainerClass is None:
-            QMessageBox.critical(self, "Trainer not found",
-                                 "Could not resolve trainer class for task '{}'.\n"
-                                 "Please set TrainTab.TRAINER_CLASSES.".format(task))
+        self.run_dummy_progress()
+
+        """
+        # ----- Choose trainer via explicit if/elif imports -----
+        trainer = None
+        if task == "instance":
+            # Mask R-CNN trainer (imported explicitly)
+            print("Training preface?")
+            trainer = maskrcnn_final(cfg_path)
+        elif task == "semantic-2d":
+            trainer = Semantic2DTrainer(cfg_path)
+        elif task == "semantic-3d":
+            trainer = Semantic3DTrainer(cfg_path)
+        elif task == "fine-tune":
+            trainer = FineTuneTrainer(cfg_path)
+        else:
+            QMessageBox.critical(self, "Trainer not found", f"No trainer wired for task '{task}'.")
             return
 
+        trainer.progress.connect(self.on_progress)
+        print("here")
+        trainer.train()
+        
+        # Connect progress if available
+        if hasattr(trainer, "progress"):
+            try:
+                print("yes or now")
+                trainer.progress.connect(self.on_progress)
+            except Exception:
+                pass
+
+        # Start training (adjust if your signature differs)
+        if hasattr(trainer, "train"):
+            print("Training started ?")
+            trainer.train()
+        else:
+            QMessageBox.critical(self, "Trainer error", f"Trainer for '{task}' has no .train() method.")
+            return
+
+
+        self.start_training.emit(cfg)
         try:
-            trainer = TrainerClass()
-            # If trainer exposes a Qt signal for progress (e.g., `progress = Signal(int)`), connect it:
+            if task == "instance":
+                # Mask R-CNN trainer (imported explicitly)
+                print("Training preface?")
+                trainer = maskrcnn_final(cfg_path)
+            elif task == "semantic-2d":
+                trainer = Semantic2DTrainer(cfg_path)
+            elif task == "semantic-3d":
+                trainer = Semantic3DTrainer(cfg_path)
+            elif task == "fine-tune":
+                trainer = FineTuneTrainer(cfg_path)
+            else:
+                QMessageBox.critical(self, "Trainer not found", f"No trainer wired for task '{task}'.")
+                return
+
+            trainer.progress.connect(self.on_progress)
+            print("here")
+            trainer.train()
+
+            # Connect progress if available
             if hasattr(trainer, "progress"):
                 try:
+                    print("yes or now")
                     trainer.progress.connect(self.on_progress)
                 except Exception:
                     pass
 
-            # Call train(config_path) — adjust if your signature differs
-            trainer.train(cfg_path)
+            # Start training (adjust if your signature differs)
+            if hasattr(trainer, "train"):
+                print("Training started ?")
+                trainer.train()
+            else:
+                QMessageBox.critical(self, "Trainer error", f"Trainer for '{task}' has no .train() method.")
+                return
 
-            # optional: emit final config for listeners
+
             self.start_training.emit(cfg)
+            
+
         except Exception as e:
+            print(e)
             QMessageBox.critical(self, "Training failed", f"{type(e).__name__}: {e}")
+        """

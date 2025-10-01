@@ -334,3 +334,45 @@ class FineTuneSAMTab(QWidget):
             return getattr(mod, cls_name, None)
         except Exception:
             return None
+
+    def run_dummy_progress(self, total_ms: int = 8000, steps: int = 100, finish_message: str | None = None):
+        """
+        Smoothly fills the progress bar to 100% in equal intervals (non-blocking).
+        total_ms: total duration in milliseconds (default ~8s)
+        steps:    number of ticks (default 100 -> 1% per tick)
+        """
+        # Lazy-create a timer we reuse across runs
+        if not hasattr(self, "_dummy_timer"):
+            self._dummy_timer = QtCore.QTimer(self)
+            self._dummy_timer.timeout.connect(self._on__dummy_tick)
+
+        # Reset state
+        self._dummy_total_steps = max(1, int(steps))
+        self._dummy_i = 0
+        self._dummy_finish_message = finish_message
+
+        # Configure timer interval and start
+        interval = max(10, int(total_ms) // self._dummy_total_steps)
+        self._dummy_timer.stop()
+        self._dummy_timer.setInterval(interval)
+        self._progress.setValue(0)
+        self._dummy_timer.start()
+
+    def _on__dummy_tick(self):
+        self._dummy_i += 1
+        if self._dummy_i >= getattr(self, "_dummy_total_steps", 100):
+            self._progress.setValue(100)
+            # stop first to avoid re-entry
+            self._dummy_timer.stop()
+            msg = getattr(self, "_dummy_finish_message", None)
+            if msg:
+                QtWidgets.QMessageBox.information(self, "Done", msg)
+        else:
+            pct = int(self._dummy_i * 100 / self._dummy_total_steps)
+            self._progress.setValue(pct)
+
+    def cancel_dummy_progress(self):
+        """Optional: stop the dummy progress early."""
+        t = getattr(self, "_dummy_timer", None)
+        if t and t.isActive():
+            t.stop()

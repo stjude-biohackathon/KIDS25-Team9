@@ -1,0 +1,11 @@
+{
+    "num_classes": 2,
+    "IMAGE_DIR": "Images",
+    "LABEL_DIR": "Labels",
+    "BATCH_SIZE": 1,
+    "NUM_EPOCHS": 10,
+    "LEARNING_RATE": 0.0001,
+    "DATASET_SPLIT": [0.5, 0.5],
+    "THRESHOLD": 0.5,
+	"OUTPUT_PATH":""
+  }

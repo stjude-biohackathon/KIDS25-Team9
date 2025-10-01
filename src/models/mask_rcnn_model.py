@@ -7,14 +7,14 @@ import datetime
 import torch
 import torchvision
 from torchvision.transforms import functional as F
-from base_model import BaseModel
+from models.base_model import BaseModel
 from utilities.maskrcnn_dataset_builder import CellDataset, build_dataset_dataloader
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from qtpy.QtCore import QObject, Signal
 
 
-class MaskRCNNModel(BaseModel, QObject):
+class MaskRCNNModel(QObject):
     progress = Signal(int)
     def __init__(self, num_classes=2, device=None):
         QObject.__init__(self)
@@ -291,15 +291,20 @@ class maskrcnn_final(MaskRCNNModel):
     def __init__(self, config_file):
         with open(config_file, "r") as f:
             self.cfg = json.load(f)
+            print(self.cfg)
         # Extract parameters
+        print("hello from here")
         self.num_classes = self.cfg["num_classes"]
         self.data_path = self.cfg["input_data_path"]
+        print("hey")
         self.batch_size = self.cfg.get("batch_size", 2)
+        print("hey")
         self.val_split = self.cfg.get("val_split", 1.0)
         self.learning_rate = self.cfg.get("learning_rate", 0.001)
         self.num_epochs = self.cfg.get("num_epochs", 20)
         self.score_thresh = self.cfg.get("score_threshold", 0.5)
-        self.inference_model_path = self.cfg.get(["inference_model_path"], None)
+        print("h")
+        self.inference_model_path = self.cfg.get("inference_model_path", None)
         self.saved_model_path = self.cfg['saved_model_path']
         self.inference_img = self.cfg.get("inference_img", None)
         self.infer_folder = self.cfg.get("infer_folder", None)
