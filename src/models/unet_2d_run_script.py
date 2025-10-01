@@ -51,7 +51,7 @@ def main():
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        for i, (images, masks) in enumerate(dataloader):
+        for i, images in enumerate(dataloader):
             infer_data = {
                 "weights_path": args["weights_path"],
                 "images": images,

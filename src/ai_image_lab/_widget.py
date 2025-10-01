@@ -109,7 +109,7 @@ class Lab(QWidget):
         self.builder_page.back_requested.connect(self._go_back_to_project)
         self.infer_page.back_requested.connect(self._go_back_to_project)
         # (Optional) If you add a back button in FineTuneSAMTab, connect it here:
-        # self.samft_page.back_requested.connect(self._go_back_to_project)
+        self.samft_page.back_requested.connect(self._go_back_to_project)
 
     # ---------- Navigation ---------- #
     def _on_project_continue(self, payload: dict):

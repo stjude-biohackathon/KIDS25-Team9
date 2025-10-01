@@ -10,7 +10,7 @@ from qtpy.QtWidgets import (
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card
 from ui.state import state
-
+from data_annotation.mask_interpolator import *
 
 class AnnotationTab(QWidget):
     """
@@ -400,6 +400,9 @@ class AnnotationTab(QWidget):
     def _on_interpolate_3d(self):
         method = self.cmb_interp.currentText()
         print(f"[AnnotationTab] Interpolate 3D invoked with {method}")
+        viewer = self._find_parent_viewer()
+        
+        interpolated_mask = interpolate_mask(volume, label, interpolation_type="sdf")
 
     def _on_sam(self):
         print("[AnnotationTab] SAM invoked")

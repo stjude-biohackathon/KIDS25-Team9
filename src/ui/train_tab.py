@@ -41,7 +41,7 @@ class TrainTab(QWidget):
         "semantic-2d": "configs/unet_2d/unet_2d_config.json",
         "semantic-3d": "configs/semantic_3d/config.json",
         "instance":    "configs/instance/maskrcnn_config_train.json",
-        "fine-tune":   "configs/fine_tune/config.json",
+        "fine-tune":   "configs/instance/maskrcnn_config_train.json",
     }
     # -------------------------------------------------------- #
 

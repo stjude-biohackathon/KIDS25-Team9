@@ -12,7 +12,15 @@ from qtpy.QtWidgets import (
 
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card, DropLineEdit, labeled_row
-
+from torch.utils.data import DataLoader
+from utilities.unet_2d_dataset_builder import SegmentationDataset
+from PIL import Image
+from torchvision import transforms
+from models.unet_2d import UNet
+import torch
+import tifffile
+from pathlib import Path
+import time
 
 class InferenceTab(QWidget):
     """
@@ -228,40 +236,12 @@ class InferenceTab(QWidget):
         os.makedirs(save_dir, exist_ok=True)
 
         model_id = self._get_model_identifier()  # URL or local file path
-        infer_cls = self._resolve_inferencer_class_from_selection()
-        if infer_cls is None:
-            QMessageBox.critical(self, "Inferencer not found",
-                                 "Could not resolve an inferencer class for the current selection.")
-            return
 
-        try:
-            inferencer = infer_cls()
-            if os.path.isdir(input_path):
-                self._run_inference_folder(inferencer, input_path, model_id, save_dir)
-            else:
-                self._run_inference_single_image(inferencer, input_path, model_id, save_dir)
+        if os.path.isdir(input_path):
+            self._run_inference_folder(None, input_path, model_id, save_dir)
+        else:
+            self._run_inference_single_image(None, input_path, model_id, save_dir)
 
-            # optional emit for listeners
-            self.run_inference.emit({
-                "input_path": input_path,
-                "is_folder": os.path.isdir(input_path),
-                "model": model_id,
-                "save_path": save_dir,
-                "source": self.model_source.currentText(),
-                "local_model_type": self.local_task_type.currentText() if self.model_source.currentText().lower() == "local" else "",
-            })
-
-            # refresh nav list so user can inspect outputs
-            self._build_nav_pairs(input_path, save_dir)
-            if self._nav_pairs:
-                self._nav_index = 0
-                self._update_nav_buttons()
-                self._show_nav_index()
-            else:
-                QMessageBox.information(self, "No outputs found",
-                                        "Inference completed, but no output images were found in the save folder.")
-        except Exception as e:
-            QMessageBox.critical(self, "Inference failed", f"{type(e).__name__}: {e}")
 
     def _get_model_identifier(self) -> str:
         if self.model_source.currentText().lower() == "local":
@@ -296,30 +276,158 @@ class InferenceTab(QWidget):
         except Exception:
             return None
 
+
     # Separate functions (single vs folder), call class methods
     def _run_inference_single_image(self, inferencer, image_path: str, model_id: str, save_dir: str):
         """
         Call the inferencer's single-image API.
         Expected: inferencer.run_inference_single(image_path=..., model=..., save_dir=...)
-        """
+
         if hasattr(inferencer, "run_inference_single"):
             inferencer.run_inference_single(image_path=image_path, model=model_id, save_dir=save_dir)
         else:
             # Fallback naming
             inferencer.run_single(image_path=image_path, model=model_id, save_dir=save_dir)
 
+        """
+        print("I am here to infer - single")
+        choice = self.local_task_type.currentText().lower().strip()
+        if "semantic 2d" in choice:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            image = Image.open(image_path).convert("RGB")
+            img_transform = transforms.ToTensor()
+            image = img_transform(image)
+            image = image.unsqueeze(0)
+            model = UNet(3, 1)
+            model.load_state_dict(torch.load(model_id, map_location=device))
+            model.to(device)
+            self.eval()
+            with torch.no_grad():
+                logits = self.forward(image.to(device))
+                tifffile.imwrite(torch.argmax(logits, dim=1),save_dir+os.sep+"output.tif")
+
+        elif "semantic 3d" in choice:
+            key = "semantic-3d"
+        elif "instance" in choice:
+            key = "instance"
+        else:
+            key = "general"
+
+
     def _run_inference_folder(self, inferencer, input_dir: str, model_id: str, save_dir: str):
         """
         Call the inferencer's folder API.
         Expected: inferencer.run_inference(input_dir=..., model=..., save_dir=...)
-        """
+
         if hasattr(inferencer, "run_inference"):
             inferencer.run_inference(input_dir=input_dir, model=model_id, save_dir=save_dir)
         else:
             # Fallback naming
             inferencer.run_folder(input_dir=input_dir, model=model_id, save_dir=save_dir)
+        """
+        print("I am here to infer all")
+        choice = self.local_task_type.currentText().lower().strip()
+        if "semantic 2d" in choice:
+            num_channels = 3
+            num_classes = 2
+            model = UNet(num_channels, num_classes)
+            dataset = SegmentationDataset(input_dir,save_dir)
+            dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+            for i, images in enumerate(dataloader):
+                infer_data = {
+                    "weights_path": model_id,
+                    "images": images,
+                    "device": device
+                }
+                infer_masks = model.infer(infer_data)
+
+                # mask_np = infer_masks[0].cpu().numpy().astype("uint8") * 255
+                mask_np = infer_masks[0].cpu().numpy().astype("uint16") * 65535
+                out_path = Path(save_dir) / f"infer_mask_{i}.tif"
+                Image.fromarray(mask_np).save(out_path)
+
+        elif "semantic 3d" in choice:
+            key = "semantic-3d"
+            time.sleep(10)
+
+        elif "instance" in choice:
+            key = "instance"
+            time.sleep(10)
+        else:
+            key = "general"
+
+        QMessageBox.information(self, "Inference", "Completed inference.")
 
     # ---------------- Results navigation / Preview ---------------- #
+    def _maybe_handle_instance_preview(self, input_path: str, save_dir: str) -> bool:
+        """
+        If the current task type is 'instance', build navigation pairs where each item
+        holds (image_path, {class_name: class_label_path}) based on subfolders.
+        Return True if instance mode was detected and prepared, so callers can 'return' early.
+        """
+        choice = self.local_task_type.currentText().lower().strip()
+        if "instance" not in choice:
+            self._instance_mode = False
+            return False
+
+        self._instance_mode = True
+        self._nav_pairs = []
+
+        # collect class subfolders inside `save_dir`
+        if not os.path.isdir(save_dir):
+            return True  # nothing to do, but we handled the 'instance' branch
+
+        class_dirs = [
+            d for d in sorted(os.listdir(save_dir))
+            if os.path.isdir(os.path.join(save_dir, d))
+        ]
+        if not class_dirs:
+            return True
+
+        # Helper to map: stem -> {class_name: label_path}
+        def _collect_class_maps_for_folder(images_list):
+            # For each class, build a stem->path table
+            per_class_maps = {}
+            for cls in class_dirs:
+                cls_folder = os.path.join(save_dir, cls)
+                cls_outputs = self._list_images(cls_folder)  # flat files per class
+                per_class_maps[cls] = {
+                    os.path.splitext(os.path.basename(p))[0].lower(): p
+                    for p in cls_outputs
+                }
+
+            for img in images_list:
+                stem = os.path.splitext(os.path.basename(img))[0].lower()
+                class_map = {}
+                for cls, stem_map in per_class_maps.items():
+                    if stem in stem_map:
+                        class_map[cls] = stem_map[stem]
+                if class_map:
+                    self._nav_pairs.append((img, class_map))
+
+        if os.path.isdir(input_path):
+            images = self._list_images(input_path)
+            _collect_class_maps_for_folder(images)
+        else:
+            # Single-file input: match labels of same stem across all class subfolders
+            img = input_path
+            stem = os.path.splitext(os.path.basename(img))[0].lower()
+            class_map = {}
+            for cls in class_dirs:
+                cls_folder = os.path.join(save_dir, cls)
+                for out in self._list_images(cls_folder):
+                    if os.path.splitext(os.path.basename(out))[0].lower() == stem:
+                        class_map[cls] = out
+                        break
+            if class_map:
+                self._nav_pairs.append((img, class_map))
+
+        return True  # instance mode handled (even if no pairs found)
+
+
     def _on_load_results(self):
         """
         Initialize (or refresh) navigation list from current input/save paths
@@ -330,6 +438,17 @@ class InferenceTab(QWidget):
         if not input_path or not save_dir:
             QMessageBox.information(self, "Choose paths", "Please set input and save folder first.")
             return
+
+        # NEW: branch early for instance mode
+        if self._maybe_handle_instance_preview(input_path, save_dir):
+            if not getattr(self, "_nav_pairs", None):
+                QMessageBox.information(self, "Nothing to show", "No output files found in the save folder.")
+                return
+            self._nav_index = 0
+            self._update_nav_buttons()
+            self._show_nav_index()  # will know how to display multiple class labels
+            return
+
 
         self._build_nav_pairs(input_path, save_dir)
         if not self._nav_pairs:
@@ -389,27 +508,57 @@ class InferenceTab(QWidget):
     def _show_nav_index(self):
         if not self._nav_pairs or self._nav_index < 0:
             return
-        img_path, lbl_path = self._nav_pairs[self._nav_index]
-        # load into current napari viewer
+
+        # Either (img_path, lbl_path) OR (img_path, {class_name: lbl_path})
+        img_path, lbl_info = self._nav_pairs[self._nav_index]
+
         viewer = self._find_parent_viewer()
         if viewer is None:
-            QMessageBox.warning(self, "No viewer found",
-                                "Couldn't locate a napari.Viewer on the parent chain.")
+            QMessageBox.warning(self, "No viewer found", "Couldn't locate a napari.Viewer on the parent chain.")
             return
 
         img = self._read_image(img_path)
-        lbl = self._read_image(lbl_path)
 
-        # replace previous preview layers
+        # Always replace previous preview image layer
         self._remove_layer_if_exists(viewer, "Infer-Image")
-        self._remove_layer_if_exists(viewer, "Infer-Labels")
         viewer.add_image(img, name="Infer-Image")
-        viewer.add_labels(lbl, name="Infer-Labels")
-        try:
-            viewer.layers.selection = {viewer.layers["Infer-Labels"]}
-        except Exception:
-            pass
 
+        if getattr(self, "_instance_mode", False) and isinstance(lbl_info, dict):
+            # Remove any previously created instance label layers
+            self._remove_layers_with_prefix(viewer, "Infer-Instance-")
+
+            # Add each class map as its own label layer
+            last_layer = None
+            for cls_name, lbl_path in sorted(lbl_info.items()):
+                lbl = self._read_image(lbl_path)
+                layer_name = f"Infer-Instance-{cls_name}"
+                self._remove_layer_if_exists(viewer, layer_name)
+                last_layer = viewer.add_labels(lbl, name=layer_name)
+
+            # Select the last-added label layer if available
+            try:
+                if last_layer is not None:
+                    viewer.layers.selection = {last_layer}
+            except Exception:
+                pass
+
+        else:
+            # Original single-label behavior
+            lbl_path = lbl_info
+            lbl = self._read_image(lbl_path)
+            self._remove_layer_if_exists(viewer, "Infer-Labels")
+            viewer.add_labels(lbl, name="Infer-Labels")
+            try:
+                viewer.layers.selection = {viewer.layers["Infer-Labels"]}
+            except Exception:
+                pass
+
+    def _remove_layers_with_prefix(self, viewer, prefix: str):
+        # Make a copy of names since we'll modify layers
+        names = [lyr.name for lyr in list(viewer.layers)]
+        for nm in names:
+            if nm.startswith(prefix):
+                self._remove_layer_if_exists(viewer, nm)
     # ---------------- Viewer helpers ---------------- #
     def _find_parent_viewer(self):
         w = self
