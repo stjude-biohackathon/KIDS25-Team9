@@ -1,3 +1,5 @@
+# FILE: ui/fine_tune_sam_tab.py
+
 import json
 import os
 import importlib
@@ -21,18 +23,18 @@ class FineTuneSAMTab(QWidget):
     - Base model path (file picker)
     - Dynamic parameter UI (from config.json)
     - Logs folder + progress bar
-    - Start Fine-Tuning -> writes a JSON and calls SAMFineTuner.fine_tune(config_path)
+    - Start Fine-Tuning -> uses run_dummy_progress(...) to update progress bar
     """
-    started = QtCore.Signal(dict)  # optional: emits final config dict
+    started = QtCore.Signal(dict)   # optional: emits final config dict
+    back_requested = QtCore.Signal()  # NEW: navigate back to tasks
 
     # ---------- Customize to your project ----------
     script_dir = os.path.dirname(__file__)
-    path = os.path.join(
-        script_dir, "..", "configs/fine_tune_sam/config.json"
-    )
-    CONFIG_PATH = path
-    TRAINER_CLASS = "trainers.sam_finetune.SAMFineTuner"  # module.ClassName
+    CONFIG_PATH = os.path.join(script_dir, "..", "configs", "fine_tune_sam", "config.json")
+    TRAINER_CLASS = "trainers.sam_finetune.SAMFineTuner"  # module.ClassName (kept for future use)
     # ------------------------------------------------
+
+    _IMG_EXTS = (".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -109,7 +111,20 @@ class FineTuneSAMTab(QWidget):
         body_lay.addWidget(run_card)
 
         # --- Actions ---
-        actions = QHBoxLayout(); actions.setSpacing(8); actions.addStretch(1)
+        actions = QHBoxLayout(); actions.setSpacing(8)
+        # Back to Tasks (NEW)
+        self.btn_back = QPushButton("Back to Tasks")
+        actions.addWidget(self.btn_back)
+        self.btn_back.clicked.connect(self.back_requested.emit)
+
+        actions.addStretch(1)
+
+        # Show Prob mask (NEW)
+        self.btn_show_prob = QPushButton("Show Prob mask")
+        actions.addWidget(self.btn_show_prob)
+        self.btn_show_prob.clicked.connect(self._on_show_prob_mask)
+
+        # Start Fine-Tuning
         self.btn_start = QPushButton("Start Fine-Tuning"); self.btn_start.setObjectName("CTA")
         actions.addWidget(self.btn_start)
         body_lay.addLayout(actions)
@@ -128,7 +143,6 @@ class FineTuneSAMTab(QWidget):
                                 f"Could not find config.json for SAM fine-tuning at:\n{path}")
             return
         try:
-            import json
             with open(path, "r") as f:
                 self._config = json.load(f)
         except Exception as e:
@@ -188,7 +202,7 @@ class FineTuneSAMTab(QWidget):
             except Exception:
                 w.setText("")
         else:
-            w = QLineEdit();
+            w = QLineEdit()
             if value is not None:
                 w.setText(str(value))
         self._editors[dotted_key] = w
@@ -295,38 +309,21 @@ class FineTuneSAMTab(QWidget):
 
     # ---------------- Start fine-tune ---------------- #
     def _on_start(self):
+        """
+        Start button -> build config JSON and drive the progress bar with a dummy run.
+        """
         cfg = self._collect_values()
         try:
-            cfg_path = self._write_config_json(cfg)
+            _ = self._write_config_json(cfg)  # we still write the JSON for reproducibility
         except Exception as e:
             QMessageBox.critical(self, "Write failed", f"Could not write config JSON:\n{type(e).__name__}: {e}")
             return
 
-        TrainerClass = self._resolve_trainer_class()
-        if TrainerClass is None:
-            QMessageBox.critical(self, "Trainer not found",
-                                 "Could not resolve SAM fine-tune trainer class.\n"
-                                 "Please set FineTuneSAMTab.TRAINER_CLASS.")
-            return
+        # Use the non-blocking dummy progress (under 10s) as requested
+        self.run_dummy_progress(total_ms=8000, steps=100, finish_message="Fine-tuning finished!")
+        self.started.emit(cfg)
 
-        try:
-            trainer = TrainerClass()
-            if hasattr(trainer, "progress"):
-                try:
-                    trainer.progress.connect(self.on_progress)
-                except Exception:
-                    pass
-
-            # Prefer 'fine_tune', fall back to 'train'
-            if hasattr(trainer, "fine_tune"):
-                trainer.fine_tune(cfg_path)
-            else:
-                trainer.train(cfg_path)
-
-            self.started.emit(cfg)
-        except Exception as e:
-            QMessageBox.critical(self, "Fine-tuning failed", f"{type(e).__name__}: {e}")
-
+    # ---------------- Optional: dynamic trainer resolver (kept for future) ---------------- #
     def _resolve_trainer_class(self):
         try:
             mod_name, cls_name = self.TRAINER_CLASS.rsplit(".", 1)
@@ -335,44 +332,113 @@ class FineTuneSAMTab(QWidget):
         except Exception:
             return None
 
+    # ---------------- Dummy progress driver (non-blocking) ---------------- #
     def run_dummy_progress(self, total_ms: int = 8000, steps: int = 100, finish_message: str | None = None):
         """
         Smoothly fills the progress bar to 100% in equal intervals (non-blocking).
         total_ms: total duration in milliseconds (default ~8s)
         steps:    number of ticks (default 100 -> 1% per tick)
         """
-        # Lazy-create a timer we reuse across runs
         if not hasattr(self, "_dummy_timer"):
             self._dummy_timer = QtCore.QTimer(self)
             self._dummy_timer.timeout.connect(self._on__dummy_tick)
 
-        # Reset state
         self._dummy_total_steps = max(1, int(steps))
         self._dummy_i = 0
         self._dummy_finish_message = finish_message
 
-        # Configure timer interval and start
         interval = max(10, int(total_ms) // self._dummy_total_steps)
         self._dummy_timer.stop()
         self._dummy_timer.setInterval(interval)
-        self._progress.setValue(0)
+        self.progress.setValue(0)   # NOTE: use self.progress (not _progress)
         self._dummy_timer.start()
 
     def _on__dummy_tick(self):
         self._dummy_i += 1
         if self._dummy_i >= getattr(self, "_dummy_total_steps", 100):
-            self._progress.setValue(100)
-            # stop first to avoid re-entry
+            self.progress.setValue(100)
             self._dummy_timer.stop()
             msg = getattr(self, "_dummy_finish_message", None)
             if msg:
                 QtWidgets.QMessageBox.information(self, "Done", msg)
         else:
             pct = int(self._dummy_i * 100 / self._dummy_total_steps)
-            self._progress.setValue(pct)
+            self.progress.setValue(pct)
 
     def cancel_dummy_progress(self):
         """Optional: stop the dummy progress early."""
         t = getattr(self, "_dummy_timer", None)
         if t and t.isActive():
             t.stop()
+
+    # ---------------- Show Prob mask (stub) ---------------- #
+    def _on_show_prob_mask(self):
+        """
+        Try to find a probability mask in the logs folder and show it as a layer.
+        Falls back to asking for a file if none is found.
+        """
+        folder = (self.logs_dir_edit.text() or "").strip()
+        path = ""
+        if folder and os.path.isdir(folder):
+            # look for a likely mask name
+            cand = [f for f in os.listdir(folder)
+                    if f.lower().endswith(self._IMG_EXTS) and ("prob" in f.lower() or "mask" in f.lower())]
+            cand.sort()
+            if cand:
+                path = os.path.join(folder, cand[0])
+
+        if not path:
+            # prompt for a file
+            fname, _ = QFileDialog.getOpenFileName(
+                self, "Select probability mask",
+                folder or os.path.expanduser("~"),
+                "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All (*.*)"
+            )
+            if not fname:
+                return
+            path = fname
+
+        viewer = self._find_parent_viewer()
+        if viewer is None:
+            QMessageBox.information(self, "No viewer", "Couldn't locate a napari.Viewer on the parent chain.")
+            return
+
+        img = self._read_image(path)
+
+        # Add/replace a layer named 'SAM-ProbMask'
+        self._remove_layer_if_exists(viewer, "SAM-ProbMask")
+        # For masks, labels usually make sense; if it's a float probmap, image is fine too.
+        try:
+            viewer.add_image(img, name="SAM-ProbMask")
+        except Exception:
+            try:
+                viewer.add_labels(img, name="SAM-ProbMask")
+            except Exception as e:
+                QMessageBox.critical(self, "Load failed", f"{type(e).__name__}: {e}")
+                return
+
+        # Focus it (use list, not set, to avoid unhashable issues)
+        try:
+            viewer.layers.selection = [viewer.layers["SAM-ProbMask"]]
+        except Exception:
+            pass
+
+    # ---------------- Viewer helpers ---------------- #
+    def _find_parent_viewer(self):
+        w = self
+        while w is not None:
+            if hasattr(w, "viewer"):
+                return getattr(w, "viewer")
+            w = w.parent()
+        return None
+
+    def _remove_layer_if_exists(self, viewer, name: str):
+        try:
+            if name in viewer.layers:
+                del viewer.layers[name]
+        except Exception:
+            pass
+
+    def _read_image(self, path: str):
+        import imageio.v3 as iio
+        return iio.imread(path)

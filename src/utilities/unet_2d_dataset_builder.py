@@ -25,7 +25,17 @@ class SegmentationDataset(Dataset):
         # Load RGB image
         image = Image.open(img_path).convert("RGB")
         image = self.img_transform(image)  # [3, H, W], float32
-        
+
+
+        return image
+
+    def __getitem222__(self, idx):
+        img_path = os.path.join(self.image_dir, self.images[idx])
+        mask_path = os.path.join(self.mask_dir, self.masks[idx])
+
+        # Load RGB image
+        image = Image.open(img_path).convert("RGB")
+        image = self.img_transform(image)  # [3, H, W], float32
 
         # Load mask (should have 0 or 1 values)
         mask = Image.open(mask_path).convert("L")
