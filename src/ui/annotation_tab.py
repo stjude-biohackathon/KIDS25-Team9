@@ -401,8 +401,15 @@ class AnnotationTab(QWidget):
         method = self.cmb_interp.currentText()
         print(f"[AnnotationTab] Interpolate 3D invoked with {method}")
         viewer = self._find_parent_viewer()
-        
+        layer = viewer.layers.selection.active
+        volume = layer.data
+        print(volume.shape)
+        label = layer.selected_label
         interpolated_mask = interpolate_mask(volume, label, interpolation_type="sdf")
+        viewer.add_labels(
+            interpolated_mask,
+            name="Interpolated Mask"
+        )
 
     def _on_sam(self):
         print("[AnnotationTab] SAM invoked")
