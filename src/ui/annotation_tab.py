@@ -10,6 +10,7 @@ from qtpy.QtWidgets import (
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card
 from ui.state import state
+from data_annotation.lasso_tool import LassoAnnotationTool
 
 
 class AnnotationTab(QWidget):
@@ -40,6 +41,9 @@ class AnnotationTab(QWidget):
         # cache last-known dirs to avoid pointless repopulates (optional)
         self._last_seen_img_dir = None
         self._last_seen_lbl_dir = None
+        
+        # Lasso annotation tool instance
+        self._lasso_tool = None
 
         self._build_ui()
         # Initial populate (may be empty if state not set yet; showEvent will refresh again)
@@ -386,12 +390,66 @@ class AnnotationTab(QWidget):
             self._disable_lasso()
 
     def _enable_lasso(self):
-        # TODO: connect to your real lasso activation
-        print("[AnnotationTab] Lasso ENABLED")
+        """Enable the lasso annotation tool."""
+        viewer = self._find_parent_viewer()
+        if viewer is None:
+            QMessageBox.warning(self, "No viewer found",
+                                "Couldn't locate a napari.Viewer. Please load an image first.")
+            self.btn_lasso.setChecked(False)
+            return
+            
+        # Check if image and labels layers exist
+        if "Anno-Image" not in viewer.layers:
+            QMessageBox.warning(self, "No image loaded",
+                                "Please load an image first using 'Create/Load Labels' button.")
+            self.btn_lasso.setChecked(False)
+            return
+            
+        if "Anno-Labels" not in viewer.layers:
+            QMessageBox.warning(self, "No labels layer",
+                                "Please load an image first using 'Create/Load Labels' button.")
+            self.btn_lasso.setChecked(False)
+            return
+        
+        try:
+            # Create and activate lasso tool
+            if self._lasso_tool is None:
+                self._lasso_tool = LassoAnnotationTool()
+                
+            self._lasso_tool.activate(viewer=viewer, 
+                                     image_layer_name="Anno-Image",
+                                     labels_layer_name="Anno-Labels")
+            
+            # Get the current selected label value from the labels layer
+            labels_layer = viewer.layers["Anno-Labels"]
+            if hasattr(labels_layer, 'selected_label'):
+                self._lasso_tool.set_label_value(labels_layer.selected_label)
+                
+            print("[AnnotationTab] Lasso ENABLED - Draw a polygon around the object")
+            QMessageBox.information(self, "Lasso Tool Activated",
+                                  "Draw a polygon around the object you want to annotate.\n"
+                                  "The tool will automatically snap to nearby edges.\n\n"
+                                  "Tips:\n"
+                                  "- Draw a rough shape around the object\n"
+                                  "- The shape will be refined to match object boundaries\n"
+                                  "- Press ESC to cancel the current polygon\n"
+                                  "- Disable the lasso tool when done")
+        except Exception as e:
+            QMessageBox.critical(self, "Lasso activation failed", 
+                               f"Failed to activate lasso tool: {type(e).__name__}: {e}")
+            self.btn_lasso.setChecked(False)
+            print(f"[AnnotationTab] Lasso activation error: {e}")
 
     def _disable_lasso(self):
-        # TODO: connect to your real lasso deactivation
-        print("[AnnotationTab] Lasso DISABLED")
+        """Disable the lasso annotation tool."""
+        if self._lasso_tool is not None and self._lasso_tool.is_active:
+            try:
+                self._lasso_tool.deactivate()
+                print("[AnnotationTab] Lasso DISABLED")
+            except Exception as e:
+                print(f"[AnnotationTab] Error disabling lasso: {e}")
+        else:
+            print("[AnnotationTab] Lasso was not active")
 
     def _on_interp_method_changed(self, text: str):
         # reflect the choice in the button label

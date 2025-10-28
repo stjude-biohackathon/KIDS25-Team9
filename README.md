@@ -27,3 +27,33 @@ The project’s goal is to provide a user-friendly interface that seamlessly int
 
 
 
+
+### Annotation Features
+
+#### Lasso Annotation with Edge Snapping
+
+The plugin includes an intelligent lasso annotation tool that automatically snaps drawn shapes to object boundaries:
+
+**How to use:**
+1. Load an image using the "Create/Load Labels" button in the Annotation tab
+2. Click the "Enable Lasso" button to activate the tool
+3. Draw a rough polygon around the object you want to annotate
+4. The tool will automatically:
+   - Detect edges in the image using Canny edge detection
+   - Smooth your rough drawing
+   - Snap the contour to nearby object boundaries using active contour algorithms
+   - Add the refined annotation to your labels layer
+
+**Features:**
+- **Automatic edge detection**: Uses advanced image processing to find object boundaries
+- **Smart snapping**: Active contour algorithm refines your rough drawing to match actual edges
+- **2D and 3D support**: Works with both 2D images and 3D volumes (slice by slice)
+- **Easy to use**: Just draw a rough shape and let the algorithm do the precision work
+
+**Tips:**
+- Draw your lasso shape close to but not necessarily exactly on the object boundary
+- The algorithm works best when the object has clear edges
+- You can adjust the current label value in the napari labels layer before drawing
+- Press ESC to cancel the current polygon if needed
+- Remember to disable the lasso tool when you're done annotating
+
