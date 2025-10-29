@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
 
 from ui.styles import DEFAULT_CONTENT_MARGINS, DEFAULT_SPACING
 from ui.common import Card, DropLineEdit, labeled_row
+from ui.huggingface_model_dialog import HuggingFaceModelDialog
 
 
 class InferenceTab(QWidget):
@@ -100,10 +101,12 @@ class InferenceTab(QWidget):
 
         # --- Model selector: URL (for web sources) OR local file browse ---
         self.model_stack = QtWidgets.QStackedWidget()
-        # URL page
+        # URL page (with Browse button for Hugging Face)
         url_page = QWidget(); url_lay = QHBoxLayout(url_page); url_lay.setContentsMargins(0, 0, 0, 0); url_lay.setSpacing(8)
         self.model_url_edit = QLineEdit(); self.model_url_edit.setPlaceholderText("Enter model URL or identifier…")
-        url_lay.addWidget(QLabel("Model")); url_lay.addWidget(self.model_url_edit, 1)
+        self.btn_hf_browse = QPushButton("Browse"); self.btn_hf_browse.setObjectName("SecondaryBtn")
+        self.btn_hf_browse.clicked.connect(self._browse_huggingface_models)
+        url_lay.addWidget(QLabel("Model")); url_lay.addWidget(self.model_url_edit, 1); url_lay.addWidget(self.btn_hf_browse)
         # Local file page
         file_page = QWidget(); file_lay = QHBoxLayout(file_page); file_lay.setContentsMargins(0, 0, 0, 0); file_lay.setSpacing(8)
         self.model_file_edit = QLineEdit(); self.model_file_edit.setReadOnly(True); self.model_file_edit.setPlaceholderText("Choose a local model file…")
@@ -201,19 +204,42 @@ class InferenceTab(QWidget):
         fname, _ = QFileDialog.getOpenFileName(self, "Select Model File", start, "All files (*.*)")
         if fname:
             self.model_file_edit.setText(fname)
+    
+    def _browse_huggingface_models(self):
+        """Open dialog to browse and select models from Hugging Face Hub."""
+        try:
+            dialog = HuggingFaceModelDialog(self)
+            if dialog.exec_():
+                model_id = dialog.get_selected_model_id()
+                if model_id:
+                    self.model_url_edit.setText(model_id)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to open Hugging Face model browser:\n{type(e).__name__}: {e}"
+            )
 
     def _on_model_source_changed(self, text: str):
         """
         Non-Local -> URL entry (no local type row)
         Local     -> file browse + show local task type dropdown
+        Hugging Face -> URL entry with Browse button enabled
         """
         is_local = text.lower().strip() == "local"
+        is_huggingface = text.lower().strip() == "hugging face"
+        
         self.model_stack.setCurrentIndex(1 if is_local else 0)
+        
         # show/hide the model type chooser only for Local
         for i in range(self.local_type_row.count()):
             item = self.local_type_row.itemAt(i)
             if item.widget():
                 item.widget().setVisible(is_local)
+        
+        # Show/hide Browse button for Hugging Face
+        if hasattr(self, 'btn_hf_browse'):
+            self.btn_hf_browse.setVisible(is_huggingface)
 
     # ---------------- Run Inference ---------------- #
     def _on_run_inference(self):
