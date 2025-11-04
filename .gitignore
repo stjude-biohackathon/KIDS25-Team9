@@ -1,0 +1,10 @@
+*.ipynb
+*.tiff
+*.tif
+*.png
+*.jpg
+*.jpeg
+*.pth
+__pycache__
+*.pyc
+src/ai_image_lab/__pycache__/*

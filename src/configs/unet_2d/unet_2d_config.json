@@ -1,0 +1,12 @@
+{ 
+  "mode": "architecture",
+  "image_dir": "../../../2dunet_dataset/Images",
+  "mask_dir": "../../../2dunet_dataset/Labels",
+  "channels": 3,
+  "classes": 2,
+  "weights_path": "../../../2dunet_dataset/UNet_2D_weights_5.pth",
+  "epochs": 20,
+  "batch_size": 1,
+  "learning_rate": 0.001,
+  "output_dir": "../../../2dunet_dataset/Infer_Images"
+}
